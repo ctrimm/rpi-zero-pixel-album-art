@@ -1,0 +1,293 @@
+#!/usr/bin/env python3
+"""
+Raspberry Pi Spotify LED Matrix Display
+Main application entry point
+"""
+
+import sys
+import os
+import signal
+import time
+import threading
+import logging
+from pathlib import Path
+
+# Add src directory to path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from utils.config_manager import ConfigManager
+from spotify_client import SpotifyClient
+from led_display import LEDDisplay
+from web_server import WebServer
+from modes.music import MusicMode
+from modes.weather import WeatherMode
+from modes.sports import SportsMode
+from modes.clock import ClockMode
+
+
+class SpotifyDisplayApp:
+    """Main application orchestrator"""
+
+    def __init__(self, config_path='config.json'):
+        """Initialize the application"""
+        # Load configuration
+        self.config_manager = ConfigManager(config_path)
+        self.config = self.config_manager.config
+
+        # Setup logging
+        self._setup_logging()
+        self.logger = logging.getLogger(__name__)
+        self.logger.info("Initializing Spotify LED Matrix Display...")
+
+        # Initialize components
+        self.display = None
+        self.spotify = None
+        self.web_server = None
+        self.modes = {}
+
+        # Application state
+        self.current_mode = self.config['modes']['default']
+        self.running = False
+        self.mode_thread = None
+
+    def _setup_logging(self):
+        """Configure application logging"""
+        log_config = self.config.get('logging', {})
+        log_level = getattr(logging, log_config.get('level', 'INFO'))
+        log_file = log_config.get('file', '/var/log/spotify-display.log')
+
+        # Create log directory if it doesn't exist
+        log_dir = os.path.dirname(log_file)
+        if log_dir and not os.path.exists(log_dir):
+            try:
+                os.makedirs(log_dir)
+            except:
+                log_file = 'spotify-display.log'  # Fallback to current dir
+
+        logging.basicConfig(
+            level=log_level,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file),
+                logging.StreamHandler(sys.stdout)
+            ]
+        )
+
+    def initialize(self):
+        """Initialize all components"""
+        try:
+            # Initialize LED display
+            self.logger.info("Initializing LED display...")
+            self.display = LEDDisplay(self.config['display'])
+
+            # Initialize Spotify client
+            self.logger.info("Initializing Spotify client...")
+            self.spotify = SpotifyClient(self.config['spotify'])
+
+            # Initialize display modes
+            self.logger.info("Initializing display modes...")
+            self.modes = {
+                'music': MusicMode(self.display, self.spotify, self.config),
+                'weather': WeatherMode(self.display, self.config),
+                'sports': SportsMode(self.display, self.config),
+                'clock': ClockMode(self.display, self.config)
+            }
+
+            # Initialize web server
+            if self.config.get('web_server', {}).get('enabled', True):
+                self.logger.info("Initializing web server...")
+                self.web_server = WebServer(
+                    self.config['web_server'],
+                    self
+                )
+
+            self.logger.info("Initialization complete!")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Initialization failed: {e}", exc_info=True)
+            return False
+
+    def start(self):
+        """Start the application"""
+        if not self.initialize():
+            self.logger.error("Failed to initialize. Exiting.")
+            return False
+
+        self.running = True
+
+        # Start web server in separate thread
+        if self.web_server:
+            web_thread = threading.Thread(target=self.web_server.start, daemon=True)
+            web_thread.start()
+            self.logger.info(f"Web interface available at http://0.0.0.0:{self.config['web_server']['port']}")
+
+        # Start main display loop
+        self.mode_thread = threading.Thread(target=self._run_display_loop, daemon=True)
+        self.mode_thread.start()
+
+        self.logger.info("Application started successfully!")
+
+        # Setup signal handlers for graceful shutdown
+        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGTERM, self._signal_handler)
+
+        # Keep main thread alive
+        try:
+            while self.running:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            self.logger.info("Keyboard interrupt received")
+
+        return True
+
+    def _run_display_loop(self):
+        """Main display loop - runs in background thread"""
+        self.logger.info("Starting display loop...")
+
+        while self.running:
+            try:
+                # Check if we should auto-switch modes
+                if self.config['modes'].get('auto_switch', True):
+                    self._check_auto_mode_switch()
+
+                # Get current mode handler
+                mode_handler = self.modes.get(self.current_mode)
+
+                if mode_handler:
+                    # Update the current mode
+                    mode_handler.update()
+                else:
+                    self.logger.warning(f"Unknown mode: {self.current_mode}")
+                    time.sleep(5)
+
+            except Exception as e:
+                self.logger.error(f"Error in display loop: {e}", exc_info=True)
+                time.sleep(5)
+
+    def _check_auto_mode_switch(self):
+        """Check if mode should be automatically switched"""
+        from datetime import datetime
+
+        current_time = datetime.now().strftime('%H:%M')
+        schedule = self.config['modes'].get('schedule', {})
+
+        # Check music mode - switch if Spotify is playing
+        music_config = schedule.get('music', {})
+        if music_config.get('enabled') and music_config.get('auto'):
+            if self.spotify.is_playing():
+                if self.current_mode != 'music':
+                    self.logger.info("Auto-switching to music mode (Spotify playing)")
+                    self.switch_mode('music')
+                return
+
+        # Check time-based schedules
+        for mode_name, mode_config in schedule.items():
+            if not mode_config.get('enabled'):
+                continue
+
+            time_ranges = mode_config.get('times', [])
+            for time_range in time_ranges:
+                if '-' in time_range:
+                    start, end = time_range.split('-')
+                    if start <= current_time <= end:
+                        if self.current_mode != mode_name:
+                            self.logger.info(f"Auto-switching to {mode_name} mode (scheduled)")
+                            self.switch_mode(mode_name)
+                        return
+
+        # Fall back to clock if configured
+        clock_config = schedule.get('clock', {})
+        if clock_config.get('fallback') and self.current_mode != 'clock':
+            self.logger.info("Switching to clock mode (fallback)")
+            self.switch_mode('clock')
+
+    def switch_mode(self, mode_name):
+        """Switch to a different display mode"""
+        if mode_name in self.modes:
+            self.logger.info(f"Switching to {mode_name} mode")
+            self.current_mode = mode_name
+            # Clear display for new mode
+            self.display.clear()
+            return True
+        else:
+            self.logger.warning(f"Unknown mode: {mode_name}")
+            return False
+
+    def get_status(self):
+        """Get current application status"""
+        spotify_status = self.spotify.get_current_track() if self.spotify else None
+
+        return {
+            'running': self.running,
+            'current_mode': self.current_mode,
+            'available_modes': list(self.modes.keys()),
+            'brightness': self.config['display']['brightness'],
+            'spotify_playing': self.spotify.is_playing() if self.spotify else False,
+            'current_track': spotify_status,
+            'uptime': time.time()  # Could track actual uptime
+        }
+
+    def set_brightness(self, brightness):
+        """Set display brightness (0-100)"""
+        brightness = max(0, min(100, brightness))
+        self.config['display']['brightness'] = brightness
+        if self.display:
+            self.display.set_brightness(brightness)
+        self.logger.info(f"Brightness set to {brightness}")
+
+    def _signal_handler(self, signum, frame):
+        """Handle shutdown signals"""
+        self.logger.info(f"Received signal {signum}, shutting down gracefully...")
+        self.stop()
+
+    def stop(self):
+        """Stop the application gracefully"""
+        self.logger.info("Stopping application...")
+        self.running = False
+
+        # Clear display
+        if self.display:
+            self.display.clear()
+
+        # Stop web server
+        if self.web_server:
+            self.web_server.stop()
+
+        self.logger.info("Application stopped")
+        sys.exit(0)
+
+
+def main():
+    """Application entry point"""
+    print("""
+    ╔══════════════════════════════════════════╗
+    ║  Raspberry Pi Spotify LED Matrix Display ║
+    ║  Standalone Network Version              ║
+    ╚══════════════════════════════════════════╝
+    """)
+
+    # Check for config file
+    config_path = 'config.json'
+    if not os.path.exists(config_path):
+        print(f"\n❌ Error: Configuration file '{config_path}' not found!")
+        print("Please copy config.example.json to config.json and configure your settings.")
+        print("\nQuick setup:")
+        print("  1. cp config.example.json config.json")
+        print("  2. nano config.json  # Add your Spotify API credentials")
+        print("  3. python3 src/main.py\n")
+        sys.exit(1)
+
+    # Create and start application
+    app = SpotifyDisplayApp(config_path)
+
+    try:
+        app.start()
+    except Exception as e:
+        print(f"\n❌ Fatal error: {e}")
+        logging.error(f"Fatal error: {e}", exc_info=True)
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

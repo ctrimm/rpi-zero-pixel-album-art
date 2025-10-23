@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify LED Matrix Display</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎵 Spotify LED Matrix Display</h1>
+            <div class="status-indicator" id="connectionStatus">
+                <span class="dot"></span>
+                <span id="statusText">Connecting...</span>
+            </div>
+        </header>
+
+        <main>
+            <!-- Current Playing Track -->
+            <section class="card">
+                <h2>Now Playing</h2>
+                <div id="currentTrack" class="track-info">
+                    <div class="album-art" id="albumArt">
+                        <div class="placeholder">No Music Playing</div>
+                    </div>
+                    <div class="track-details">
+                        <div class="track-name" id="trackName">-</div>
+                        <div class="artist-name" id="artistName">-</div>
+                        <div class="album-name" id="albumName">-</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Display Mode Control -->
+            <section class="card">
+                <h2>Display Mode</h2>
+                <div class="mode-selector">
+                    <button class="mode-btn active" data-mode="music" onclick="switchMode('music')">
+                        🎵 Music
+                    </button>
+                    <button class="mode-btn" data-mode="weather" onclick="switchMode('weather')">
+                        🌤️ Weather
+                    </button>
+                    <button class="mode-btn" data-mode="sports" onclick="switchMode('sports')">
+                        ⚽ Sports
+                    </button>
+                    <button class="mode-btn" data-mode="clock" onclick="switchMode('clock')">
+                        🕐 Clock
+                    </button>
+                </div>
+            </section>
+
+            <!-- Brightness Control -->
+            <section class="card">
+                <h2>Brightness</h2>
+                <div class="brightness-control">
+                    <label for="brightnessSlider">
+                        <span>☀️</span>
+                        <span id="brightnessValue">80</span>%
+                    </label>
+                    <input
+                        type="range"
+                        id="brightnessSlider"
+                        min="0"
+                        max="100"
+                        value="80"
+                        oninput="updateBrightness(this.value)"
+                    >
+                </div>
+            </section>
+
+            <!-- System Info -->
+            <section class="card">
+                <h2>System Status</h2>
+                <div class="system-info">
+                    <div class="info-row">
+                        <span class="label">Current Mode:</span>
+                        <span class="value" id="currentMode">music</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Spotify Status:</span>
+                        <span class="value" id="spotifyStatus">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Display:</span>
+                        <span class="value" id="displayStatus">Active</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Quick Actions -->
+            <section class="card">
+                <h2>Quick Actions</h2>
+                <div class="action-buttons">
+                    <button class="action-btn" onclick="testDisplay()">
+                        🎨 Test Pattern
+                    </button>
+                    <button class="action-btn" onclick="clearDisplay()">
+                        ⬛ Clear Display
+                    </button>
+                    <button class="action-btn" onclick="refreshStatus()">
+                        🔄 Refresh Status
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Raspberry Pi Spotify LED Matrix Display v1.0</p>
+            <p>Last updated: <span id="lastUpdate">-</span></p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+[Unit]
+Description=Spotify LED Matrix Display
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/rpi-zero-pixel-album-art
+ExecStart=/usr/bin/python3 /home/pi/rpi-zero-pixel-album-art/src/main.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+PrivateTmp=true
+NoNewPrivileges=true
+
+# Environment
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target
