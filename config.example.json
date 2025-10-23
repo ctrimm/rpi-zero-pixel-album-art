@@ -52,6 +52,14 @@
     "update_interval": 600,
     "display_forecast": true
   },
+  "weather_on_8s": {
+    "enabled": true,
+    "api_key": "your_openweathermap_api_key_here",
+    "location": "New York,US",
+    "units": "imperial",
+    "display_duration": 90,
+    "comment": "Classic Weather Channel style - shows at :08, :18, :28, :38, :48, :58"
+  },
   "sports": {
     "enabled": true,
     "provider": "espn",

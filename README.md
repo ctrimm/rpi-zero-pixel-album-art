@@ -11,11 +11,13 @@ A standalone Raspberry Pi solution that displays album art, weather, and sports 
 - **Multiple Display Modes**:
   - 🎵 Music: Album artwork with artist/track info
   - 🌤️ Weather: Current conditions and forecast
+  - 📺 **Weather on the 8s**: Classic Weather Channel style forecast every 10 minutes (:08, :18, :28, :38, :48, :58)
   - ⚽ Sports: Live scores and game updates
   - 🕐 Clock: Time and date display
 - **Web Interface**: Simple browser-based control accessible from any device on your network
 - **Automatic Mode Switching**: Smart scheduling based on time and activity
 - **Standalone Operation**: No cloud dependencies or Home Assistant required
+- **Nostalgic Weather Display**: Recreation of the iconic "Local on the 8s" feature
 
 ## Hardware Requirements
 
@@ -188,6 +190,15 @@ sudo systemctl status spotify-display
 - Weather icons
 - 3-day forecast
 - Uses OpenWeatherMap API (free tier)
+
+### Weather on the 8s (NEW!)
+- **Classic Weather Channel nostalgia!**
+- Automatically displays every 10 minutes at :08, :18, :28, :38, :48, :58
+- 90-second animated forecast sequence
+- Shows current conditions, hourly forecast, and details
+- Overrides current mode temporarily, then returns
+- Configurable location and units
+- See [detailed documentation](docs/WEATHER_ON_8S.md)
 
 ### Sports Mode
 - Live scores during games

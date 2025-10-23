@@ -23,6 +23,7 @@ from modes.music import MusicMode
 from modes.weather import WeatherMode
 from modes.sports import SportsMode
 from modes.clock import ClockMode
+from modes.weather_on_the_8s import WeatherOnThe8sMode
 
 
 class SpotifyDisplayApp:
@@ -93,6 +94,11 @@ class SpotifyDisplayApp:
                 'clock': ClockMode(self.display, self.config)
             }
 
+            # Initialize Weather on the 8s (special override mode)
+            self.weather_on_8s = WeatherOnThe8sMode(self.display, self.config)
+            if self.weather_on_8s.enabled:
+                self.logger.info("🌤️ Weather on the 8s enabled! Will show at :08, :18, :28, :38, :48, :58")
+
             # Initialize web server
             if self.config.get('web_server', {}).get('enabled', True):
                 self.logger.info("Initializing web server...")
@@ -147,11 +153,19 @@ class SpotifyDisplayApp:
 
         while self.running:
             try:
-                # Check if we should auto-switch modes
+                # PRIORITY 1: Check if Weather on the 8s should activate
+                # This overrides all other modes during its display time
+                if self.weather_on_8s and self.weather_on_8s.enabled:
+                    if self.weather_on_8s.update():
+                        # Weather on 8s is active and handled the update
+                        time.sleep(1)
+                        continue
+
+                # PRIORITY 2: Check if we should auto-switch modes
                 if self.config['modes'].get('auto_switch', True):
                     self._check_auto_mode_switch()
 
-                # Get current mode handler
+                # PRIORITY 3: Get current mode handler
                 mode_handler = self.modes.get(self.current_mode)
 
                 if mode_handler:
