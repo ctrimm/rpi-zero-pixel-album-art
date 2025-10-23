@@ -62,6 +62,8 @@ A standalone Raspberry Pi solution that displays album art, weather, and sports 
 
 ## Quick Start
 
+**🆕 NEW! Complete beginner's guide:** See [**docs/PI_SETUP_GUIDE.md**](docs/PI_SETUP_GUIDE.md) for step-by-step instructions starting from flashing your SD card!
+
 ### 1. Hardware Assembly
 
 **Power Connection**:
