@@ -99,7 +99,7 @@ sudo reboot
    - **App Description**: "Personal LED album art display"
    - Accept terms and create
 5. Click **Edit Settings**
-6. Add Redirect URI: `http://localhost:8888/callback`
+6. Add Redirect URI: `http://127.0.0.1:8888/callback`
 7. Save
 
 ### Step 2: Get API Credentials
@@ -123,7 +123,7 @@ Update the Spotify section:
   "spotify": {
     "client_id": "paste_your_client_id_here",
     "client_secret": "paste_your_client_secret_here",
-    "redirect_uri": "http://localhost:8888/callback"
+    "redirect_uri": "http://127.0.0.1:8888/callback"
   }
 }
 ```

@@ -135,7 +135,7 @@ class SpotifyDisplayApp:
             web_thread.start()
             self.logger.info(f"Web interface available at http://0.0.0.0:{self.config['web_server']['port']}")
 
-        # Start main display loop
+        # Start main display loop in background thread
         self.mode_thread = threading.Thread(target=self._run_display_loop, daemon=True)
         self.mode_thread.start()
 
@@ -145,18 +145,32 @@ class SpotifyDisplayApp:
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
-        # Keep main thread alive
-        try:
-            while self.running:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            self.logger.info("Keyboard interrupt received")
+        # Check if we're using the simulator (needs main thread for tkinter on macOS)
+        from led_simulator import SimulatedLEDDisplay
+        if isinstance(self.display, SimulatedLEDDisplay):
+            self.logger.info("🖥️  Starting simulator GUI on main thread (required for macOS)")
+            # Run tkinter mainloop on main thread (blocking)
+            # This is required for macOS - background threads run the app logic
+            try:
+                self.display.mainloop()
+            except KeyboardInterrupt:
+                self.logger.info("Keyboard interrupt received")
+        else:
+            # Real hardware - keep main thread alive
+            try:
+                while self.running:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                self.logger.info("Keyboard interrupt received")
 
         return True
 
     def _run_display_loop(self):
         """Main display loop - runs in background thread"""
         self.logger.info("Starting display loop...")
+
+        # Give Spotify client time to initialize and check playback state
+        time.sleep(2)
 
         while self.running:
             try:
@@ -200,7 +214,7 @@ class SpotifyDisplayApp:
                 if self.current_mode != 'music':
                     self.logger.info("Auto-switching to music mode (Spotify playing)")
                     self.switch_mode('music')
-                return
+                return  # Stay in music mode, don't check other modes
 
         # Check time-based schedules
         for mode_name, mode_config in schedule.items():
@@ -217,11 +231,17 @@ class SpotifyDisplayApp:
                             self.switch_mode(mode_name)
                         return
 
-        # Fall back to clock if configured
+        # Fall back to clock ONLY if music is not playing
+        # This prevents switching away from music mode during brief API check gaps
         clock_config = schedule.get('clock', {})
-        if clock_config.get('fallback') and self.current_mode != 'clock':
-            self.logger.info("Switching to clock mode (fallback)")
-            self.switch_mode('clock')
+        if clock_config.get('fallback'):
+            # Only switch to clock if we're not in music mode OR music has actually stopped
+            if self.current_mode == 'music' and not self.spotify.is_playing():
+                self.logger.info("Music stopped - switching to clock mode (fallback)")
+                self.switch_mode('clock')
+            elif self.current_mode != 'clock' and self.current_mode != 'music':
+                self.logger.info("Switching to clock mode (fallback)")
+                self.switch_mode('clock')
 
     def switch_mode(self, mode_name):
         """Switch to a different display mode"""

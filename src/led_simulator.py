@@ -8,12 +8,16 @@ import tkinter as tk
 from PIL import Image, ImageTk
 import threading
 import time
+import queue
 
 
 class LEDMatrixSimulator:
     """
     Simulates the LED matrix display in a Tkinter window
     Perfect for development on Mac/Windows/Linux without Pi hardware
+
+    NOTE: On macOS, tkinter MUST run on the main thread.
+    This class is designed to be created from the main thread.
     """
 
     def __init__(self, width=64, height=64, pixel_size=8):
@@ -37,24 +41,10 @@ class LEDMatrixSimulator:
         # Current image
         self.current_image = Image.new('RGB', (width, height), color=(0, 0, 0))
 
-        # Tkinter setup
-        self.root = None
-        self.canvas = None
-        self.tk_image = None
-        self.running = False
+        # Thread-safe queue for image updates
+        self.image_queue = queue.Queue()
 
-        # Start GUI in separate thread
-        self.gui_thread = threading.Thread(target=self._run_gui, daemon=True)
-        self.gui_thread.start()
-
-        # Wait for window to initialize
-        time.sleep(0.5)
-
-        self.logger.info(f"🖥️  LED Matrix Simulator initialized ({width}x{height})")
-        self.logger.info(f"🪟  Simulator window: {self.window_width}x{self.window_height} pixels")
-
-    def _run_gui(self):
-        """Run the Tkinter GUI in a separate thread"""
+        # Tkinter setup (MUST be on main thread for macOS)
         self.root = tk.Tk()
         self.root.title(f"LED Matrix Simulator ({self.width}x{self.height})")
         self.root.resizable(False, False)
@@ -93,13 +83,35 @@ class LEDMatrixSimulator:
         )
         mode_label.pack()
 
+        self.tk_image = None
         self.running = True
 
         # Display initial blank screen
         self._update_display()
 
-        self.root.mainloop()
-        self.running = False
+        # Set up periodic check for image updates
+        self._check_queue()
+
+        self.logger.info(f"🖥️  LED Matrix Simulator initialized ({width}x{height})")
+        self.logger.info(f"🪟  Simulator window: {self.window_width}x{self.window_height} pixels")
+
+    def _check_queue(self):
+        """Check for new images in the queue (called periodically)"""
+        if not self.running:
+            return
+
+        # Process all pending images
+        try:
+            while True:
+                image = self.image_queue.get_nowait()
+                self.current_image = image
+                self._update_display()
+        except queue.Empty:
+            pass
+
+        # Schedule next check (every 33ms = ~30 FPS)
+        if self.running:
+            self.root.after(33, self._check_queue)
 
     def _update_display(self):
         """Update the display with current image"""
@@ -126,6 +138,7 @@ class LEDMatrixSimulator:
     def display_image(self, image):
         """
         Display a PIL Image on the simulated matrix
+        Thread-safe: can be called from any thread
 
         Args:
             image: PIL Image object (will be resized to matrix dimensions)
@@ -142,22 +155,24 @@ class LEDMatrixSimulator:
         if image.size != (self.width, self.height):
             image = image.resize((self.width, self.height), Image.LANCZOS)
 
-        self.current_image = image.copy()
-
-        # Schedule display update on GUI thread
-        if self.running and self.root:
-            self.root.after(0, self._update_display)
+        # Put image in queue for main thread to process
+        self.image_queue.put(image.copy())
 
     def clear(self):
         """Clear the display (set to black)"""
         blank = Image.new('RGB', (self.width, self.height), color=(0, 0, 0))
         self.display_image(blank)
 
+    def mainloop(self):
+        """Start the Tkinter main loop (MUST be called from main thread)"""
+        self.root.mainloop()
+        self.running = False
+
     def close(self):
         """Close the simulator window"""
+        self.running = False
         if self.root:
             self.root.quit()
-        self.running = False
 
 
 class SimulatedLEDDisplay:
@@ -184,7 +199,7 @@ class SimulatedLEDDisplay:
         # Pixel size for simulator (how big each LED appears)
         pixel_size = config.get('simulator_pixel_size', 8)
 
-        # Initialize simulator
+        # Initialize simulator (MUST be on main thread for macOS)
         self.logger.info("🖥️  Initializing LED Matrix Simulator (Development Mode)")
         self.logger.info("📍 Running on Mac/development machine - no Pi hardware needed")
 
@@ -198,6 +213,10 @@ class SimulatedLEDDisplay:
 
         self.logger.info(f"✓ Simulated display ready: {self.width}x{self.height}")
         self.logger.info("💡 Display updates will show in the simulator window")
+
+    def mainloop(self):
+        """Start the simulator main loop (call from main thread)"""
+        self.simulator.mainloop()
 
     def display_image(self, image):
         """

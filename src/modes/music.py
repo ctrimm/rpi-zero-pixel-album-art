@@ -35,6 +35,7 @@ class MusicMode:
         self.current_track_id = None
         self.last_update = 0
         self.update_interval = 5  # Check every 5 seconds
+        self.first_update = True  # Flag for first update
 
         # Display settings
         self.show_track_info = config.get('advanced', {}).get('show_track_info', True)
@@ -45,20 +46,25 @@ class MusicMode:
     def update(self):
         """Update music display"""
         try:
-            # Rate limiting
+            # Rate limiting (but skip on first update)
             current_time = time.time()
-            if current_time - self.last_update < self.update_interval:
+            if not self.first_update and current_time - self.last_update < self.update_interval:
                 time.sleep(1)
                 return
 
             self.last_update = current_time
 
             # Get current track
-            track_info = self.spotify.get_current_track()
+            # spotify_client now returns cached track during rate limiting,
+            # so we always get useful data (either fresh or cached)
+            track_info = self.spotify.get_current_track(force=self.first_update)
+            self.first_update = False  # Clear flag after first update
 
             if not track_info:
-                # Nothing playing - show placeholder
+                # Spotify explicitly says nothing is playing (not rate limited)
+                self.logger.debug("No track currently playing")
                 self._display_placeholder()
+                self.current_track_id = None
                 time.sleep(2)
                 return
 
@@ -67,13 +73,12 @@ class MusicMode:
                 self.logger.info(f"Track changed: {track_info['artist_name']} - {track_info['track_name']}")
                 self.current_track_id = track_info['track_id']
 
-                # Display album art
+                # Display album art and keep showing it
                 self._display_album_art(track_info)
 
-                # Optionally show track info overlay
-                if self.show_track_info:
-                    time.sleep(self.track_info_duration)
-                    self._display_track_info(track_info)
+            # Track is still playing - just sleep and check again later
+            # The album art stays on screen continuously (no need to redraw)
+            time.sleep(1)
 
         except Exception as e:
             self.logger.error(f"Error in music mode update: {e}", exc_info=True)

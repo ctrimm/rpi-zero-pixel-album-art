@@ -130,7 +130,7 @@ nano config.json  # Add your Spotify API credentials
 1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
 2. Create a new app
 3. Note your **Client ID** and **Client Secret**
-4. Add redirect URI: `http://localhost:8888/callback`
+4. Add redirect URI: `http://127.0.0.1:8888/callback`
 5. Add credentials to `config.json`
 
 ### 4. First Run
@@ -154,7 +154,7 @@ Edit `config.json`:
   "spotify": {
     "client_id": "your_client_id_here",
     "client_secret": "your_client_secret_here",
-    "redirect_uri": "http://localhost:8888/callback"
+    "redirect_uri": "http://127.0.0.1:8888/callback"
   },
   "display": {
     "rows": 64,

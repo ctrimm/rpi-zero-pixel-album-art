@@ -405,7 +405,7 @@ Before powering on:
 4. **Fill in:**
    - App name: `LED Matrix Display`
    - App description: `Personal LED album art display`
-   - Redirect URI: `http://localhost:8888/callback`
+   - Redirect URI: `http://127.0.0.1:8888/callback`
    - Check the terms box
    - Click **Create**
 5. **Click "Settings"**
@@ -428,7 +428,7 @@ nano config.json
   "spotify": {
     "client_id": "PASTE_YOUR_CLIENT_ID_HERE",
     "client_secret": "PASTE_YOUR_CLIENT_SECRET_HERE",
-    "redirect_uri": "http://localhost:8888/callback"
+    "redirect_uri": "http://127.0.0.1:8888/callback"
   }
 }
 ```
@@ -476,7 +476,7 @@ python3 src/spotify_auth.py
 
 6. **Copy the ENTIRE URL** from your browser's address bar
    ```
-   http://localhost:8888/callback?code=AQD...
+   http://127.0.0.1:8888/callback?code=AQD...
    ```
 
 7. **Paste it back** into the terminal and press Enter

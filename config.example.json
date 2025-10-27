@@ -2,7 +2,7 @@
   "spotify": {
     "client_id": "your_spotify_client_id_here",
     "client_secret": "your_spotify_client_secret_here",
-    "redirect_uri": "http://localhost:8888/callback",
+    "redirect_uri": "http://127.0.0.1:8888/callback",
     "scope": "user-read-currently-playing user-read-playback-state",
     "update_interval": 10
   },
@@ -24,7 +24,7 @@
     "auto_switch": true,
     "schedule": {
       "weather": {
-        "enabled": true,
+        "enabled": false,
         "times": ["06:00-09:00", "17:00-17:30"]
       },
       "music": {
@@ -33,40 +33,43 @@
         "condition": "spotify_playing"
       },
       "sports": {
-        "enabled": true,
+        "enabled": false,
         "times": ["18:00-23:00"],
         "condition": "game_active"
       },
       "clock": {
         "enabled": true,
-        "fallback": true
+        "fallback": true,
+        "style": "analog",
+        "comment": "style can be 'analog' or 'digital'"
       }
     }
   },
   "weather": {
-    "enabled": true,
+    "enabled": false,
     "provider": "openweathermap",
     "api_key": "your_openweathermap_api_key_here",
-    "location": "New York,US",
+    "location": "Arlington,Virginia,US",
     "units": "imperial",
     "update_interval": 600,
     "display_forecast": true
   },
   "weather_on_8s": {
-    "enabled": true,
+    "enabled": false,
     "api_key": "your_openweathermap_api_key_here",
-    "location": "New York,US",
+    "location": "Arlington,Virginia,US",
     "units": "imperial",
     "display_duration": 90,
     "comment": "Classic Weather Channel style - shows at :08, :18, :28, :38, :48, :58"
   },
   "sports": {
-    "enabled": true,
+    "enabled": false,
     "provider": "espn",
     "league": "NFL",
-    "team": "NO",
+    "team": "GB",
     "update_interval": 60,
-    "show_scores_only_during_games": false
+    "show_scores_only_during_games": false,
+    "comment": "team codes: GB=Green Bay Packers, NO=New Orleans Saints, etc."
   },
   "web_server": {
     "enabled": true,
