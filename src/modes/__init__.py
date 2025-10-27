@@ -6,4 +6,4 @@ from .clock import ClockMode
 from .pipes import PipesMode
 from .dvd_logo import DVDLogoMode
 
-__all__ = ['MusicMode', 'WeatherMode', 'SportsMode', 'ClockMode', 'PipesMode', 'DVDLogoMode']
+__all__ = ['MusicMode', 'WeatherMode', 'SportsMode', 'ClockMode', 'PipesMode', 'DVDLogoMode', 'WeatherOnThe8sMode']

@@ -82,7 +82,7 @@ def main():
         auth_manager = SpotifyOAuth(
             client_id=client_id,
             client_secret=client_secret,
-            redirect_uri=spotify_config.get('redirect_uri', 'http://localhost:8888/callback'),
+            redirect_uri=spotify_config.get('redirect_uri', 'http://127.0.0.1:8888/callback'),
             scope=spotify_config.get('scope', 'user-read-currently-playing user-read-playback-state'),
             cache_handler=cache_handler,
             open_browser=True

@@ -2,8 +2,11 @@
 
 A standalone Raspberry Pi solution that displays album art, weather, and sports scores on a 64x64 LED matrix panel. No Home Assistant required - runs completely independently on your local network.
 
+**🆕 NEW: Development Mode!** Test and develop on your Mac with a visual LED simulator - no Pi hardware needed! See [Development Guide](docs/DEVELOPMENT.md)
+
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.7+-blue.svg)
+![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20%7C%20Mac%20%7C%20Linux-blue)
 
 ## Features
 
@@ -11,6 +14,7 @@ A standalone Raspberry Pi solution that displays album art, weather, and sports 
 - **Multiple Display Modes**:
   - 🎵 Music: Album artwork with artist/track info
   - 🌤️ Weather: Current conditions and forecast
+  - 📺 **Weather on the 8s**: Classic Weather Channel style forecast every 10 minutes (:08, :18, :28, :38, :48, :58)
   - ⚽ Sports: Live scores and game updates
   - 🕐 Clock: Time and date display
   - 🔧 Pipes: Classic Windows 3D Pipes screensaver
@@ -18,6 +22,7 @@ A standalone Raspberry Pi solution that displays album art, weather, and sports 
 - **Web Interface**: Simple browser-based control accessible from any device on your network
 - **Automatic Mode Switching**: Smart scheduling based on time and activity
 - **Standalone Operation**: No cloud dependencies or Home Assistant required
+- **Nostalgic Weather Display**: Recreation of the iconic "Local on the 8s" feature
 
 ## Hardware Requirements
 
@@ -62,6 +67,41 @@ A standalone Raspberry Pi solution that displays album art, weather, and sports 
 
 ## Quick Start
 
+### 🖥️ Development Mode (Mac/Windows/Linux)
+
+**Want to develop without deploying to Pi every time?**
+
+```bash
+# Clone and setup
+git clone https://github.com/ctrimm/rpi-zero-pixel-album-art.git
+cd rpi-zero-pixel-album-art
+
+# On Mac: Use virtual environment (required for modern macOS)
+bash setup_mac.sh
+source venv/bin/activate
+
+# On Windows/Linux:
+pip3 install -r requirements.txt
+
+# Configure Spotify credentials
+cp config.example.json config.json
+nano config.json  # Add your Spotify API credentials
+
+# Run with visual simulator
+python3 dev_run.py
+```
+
+A window will open showing the 64x64 LED matrix! All features work exactly like on real hardware.
+
+📖 **Full development guide:** [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
+🍎 **Mac setup guide:** [docs/MAC_SETUP.md](docs/MAC_SETUP.md)
+
+---
+
+### 🔴 Raspberry Pi Deployment
+
+**🆕 Complete beginner's guide:** See [**docs/PI_SETUP_GUIDE.md**](docs/PI_SETUP_GUIDE.md) for step-by-step instructions starting from flashing your SD card!
+
 ### 1. Hardware Assembly
 
 **Power Connection**:
@@ -92,7 +132,7 @@ nano config.json  # Add your Spotify API credentials
 1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
 2. Create a new app
 3. Note your **Client ID** and **Client Secret**
-4. Add redirect URI: `http://localhost:8888/callback`
+4. Add redirect URI: `http://127.0.0.1:8888/callback`
 5. Add credentials to `config.json`
 
 ### 4. First Run
@@ -116,7 +156,7 @@ Edit `config.json`:
   "spotify": {
     "client_id": "your_client_id_here",
     "client_secret": "your_client_secret_here",
-    "redirect_uri": "http://localhost:8888/callback"
+    "redirect_uri": "http://127.0.0.1:8888/callback"
   },
   "display": {
     "rows": 64,
@@ -190,6 +230,15 @@ sudo systemctl status spotify-display
 - Weather icons
 - 3-day forecast
 - Uses OpenWeatherMap API (free tier)
+
+### Weather on the 8s (NEW!)
+- **Classic Weather Channel nostalgia!**
+- Automatically displays every 10 minutes at :08, :18, :28, :38, :48, :58
+- 90-second animated forecast sequence
+- Shows current conditions, hourly forecast, and details
+- Overrides current mode temporarily, then returns
+- Configurable location and units
+- See [detailed documentation](docs/WEATHER_ON_8S.md)
 
 ### Sports Mode
 - Live scores during games
