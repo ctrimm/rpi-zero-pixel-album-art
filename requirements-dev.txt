@@ -1,0 +1,20 @@
+# Development Requirements
+# Additional packages needed for local development on Mac/Windows/Linux
+
+# All production requirements
+-r requirements.txt
+
+# GUI for simulator (Tkinter usually comes with Python on Mac)
+# But we'll list it anyway for completeness
+
+# Development tools
+ipython>=8.0.0
+pytest>=7.0.0
+black>=23.0.0
+flake8>=6.0.0
+
+# Mock Spotify for testing without auth (optional)
+responses>=0.23.0
+
+# For better debugging
+ipdb>=0.13.0

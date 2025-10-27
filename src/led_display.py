@@ -1,18 +1,42 @@
 """
 LED Matrix Display Controller
 Handles the RGB LED matrix hardware interface
+Auto-detects environment and uses simulator on development machines
 """
 
 import logging
-import time
+import os
+import platform
 from PIL import Image, ImageDraw, ImageFont
 
-try:
-    from rgbmatrix import RGBMatrix, RGBMatrixOptions
-    MATRIX_AVAILABLE = True
-except ImportError:
-    MATRIX_AVAILABLE = False
-    print("Warning: rgbmatrix library not found. Running in simulation mode.")
+# Check if we should use simulator
+def should_use_simulator():
+    """Detect if we should use the simulator instead of real hardware"""
+    # Check environment variable override
+    if os.environ.get('LED_SIMULATOR', '').lower() in ('1', 'true', 'yes'):
+        return True
+
+    # Check if running on Raspberry Pi
+    try:
+        with open('/proc/cpuinfo', 'r') as f:
+            cpuinfo = f.read()
+            if 'Raspberry Pi' in cpuinfo or 'BCM' in cpuinfo:
+                return False  # We're on a Pi, use real hardware
+    except:
+        pass
+
+    # Not on Pi, use simulator
+    return True
+
+# Try to import RGB matrix library (only works on Pi)
+MATRIX_AVAILABLE = False
+if not should_use_simulator():
+    try:
+        from rgbmatrix import RGBMatrix, RGBMatrixOptions
+        MATRIX_AVAILABLE = True
+    except ImportError:
+        print("⚠️  Warning: rgbmatrix library not found. Using simulator mode.")
+        print("   Install with: cd ~/rpi-rgb-led-matrix && make install-python")
 
 
 class LEDDisplay:

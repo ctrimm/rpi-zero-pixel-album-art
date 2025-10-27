@@ -2,8 +2,11 @@
 
 A standalone Raspberry Pi solution that displays album art, weather, and sports scores on a 64x64 LED matrix panel. No Home Assistant required - runs completely independently on your local network.
 
+**🆕 NEW: Development Mode!** Test and develop on your Mac with a visual LED simulator - no Pi hardware needed! See [Development Guide](docs/DEVELOPMENT.md)
+
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.7+-blue.svg)
+![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20%7C%20Mac%20%7C%20Linux-blue)
 
 ## Features
 
@@ -62,7 +65,33 @@ A standalone Raspberry Pi solution that displays album art, weather, and sports 
 
 ## Quick Start
 
-**🆕 NEW! Complete beginner's guide:** See [**docs/PI_SETUP_GUIDE.md**](docs/PI_SETUP_GUIDE.md) for step-by-step instructions starting from flashing your SD card!
+### 🖥️ Development Mode (Mac/Windows/Linux)
+
+**Want to develop without deploying to Pi every time?**
+
+```bash
+# Clone and setup
+git clone https://github.com/ctrimm/rpi-zero-pixel-album-art.git
+cd rpi-zero-pixel-album-art
+pip3 install -r requirements.txt
+
+# Configure Spotify credentials
+cp config.example.json config.json
+nano config.json  # Add your Spotify API credentials
+
+# Run with visual simulator
+python3 dev_run.py
+```
+
+A window will open showing the 64x64 LED matrix! All features work exactly like on real hardware.
+
+📖 **Full development guide:** [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
+
+---
+
+### 🔴 Raspberry Pi Deployment
+
+**🆕 Complete beginner's guide:** See [**docs/PI_SETUP_GUIDE.md**](docs/PI_SETUP_GUIDE.md) for step-by-step instructions starting from flashing your SD card!
 
 ### 1. Hardware Assembly
 

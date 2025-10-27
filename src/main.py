@@ -77,9 +77,16 @@ class SpotifyDisplayApp:
     def initialize(self):
         """Initialize all components"""
         try:
-            # Initialize LED display
+            # Initialize LED display (auto-detects simulator vs real hardware)
             self.logger.info("Initializing LED display...")
-            self.display = LEDDisplay(self.config['display'])
+
+            # Check if we should use simulator
+            import os
+            if os.environ.get('LED_SIMULATOR', '').lower() in ('1', 'true', 'yes'):
+                from led_simulator import SimulatedLEDDisplay
+                self.display = SimulatedLEDDisplay(self.config['display'])
+            else:
+                self.display = LEDDisplay(self.config['display'])
 
             # Initialize Spotify client
             self.logger.info("Initializing Spotify client...")

@@ -27,6 +27,7 @@ env/
 
 # Configuration and secrets
 config.json
+config.dev.json
 .env
 *.key
 *.pem
@@ -40,6 +41,7 @@ spotify_token_cache
 *.log
 logs/
 *.out
+dev_spotify-display.log
 
 # Image cache
 debug_display.png
