@@ -105,15 +105,27 @@ Adjust how big each LED pixel appears:
 ### Prerequisites
 
 **On Mac:**
+
+⚠️ **IMPORTANT:** Modern macOS requires using a virtual environment!
+
 ```bash
-# Python 3.7+ (usually pre-installed)
-python3 --version
+# Quick setup (recommended)
+bash setup_mac.sh
 
-# Install Homebrew if you don't have it
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+# This creates a virtual environment and installs all dependencies
+# See docs/MAC_SETUP.md for detailed instructions
+```
 
-# Tkinter comes with Python on Mac, but if you need it:
-brew install python-tk
+**Or manual setup:**
+```bash
+# Create virtual environment
+python3 -m venv venv
+
+# Activate it (do this every time you start a new terminal)
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
 **On Windows:**

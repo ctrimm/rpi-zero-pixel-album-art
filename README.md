@@ -73,6 +73,12 @@ A standalone Raspberry Pi solution that displays album art, weather, and sports 
 # Clone and setup
 git clone https://github.com/ctrimm/rpi-zero-pixel-album-art.git
 cd rpi-zero-pixel-album-art
+
+# On Mac: Use virtual environment (required for modern macOS)
+bash setup_mac.sh
+source venv/bin/activate
+
+# On Windows/Linux:
 pip3 install -r requirements.txt
 
 # Configure Spotify credentials
@@ -86,6 +92,7 @@ python3 dev_run.py
 A window will open showing the 64x64 LED matrix! All features work exactly like on real hardware.
 
 📖 **Full development guide:** [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
+🍎 **Mac setup guide:** [docs/MAC_SETUP.md](docs/MAC_SETUP.md)
 
 ---
 
