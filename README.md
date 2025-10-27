@@ -13,6 +13,8 @@ A standalone Raspberry Pi solution that displays album art, weather, and sports 
   - 🌤️ Weather: Current conditions and forecast
   - ⚽ Sports: Live scores and game updates
   - 🕐 Clock: Time and date display
+  - 🔧 Pipes: Classic Windows 3D Pipes screensaver
+  - 📀 DVD Logo: Bouncing DVD logo with rainbow corner hits
 - **Web Interface**: Simple browser-based control accessible from any device on your network
 - **Automatic Mode Switching**: Smart scheduling based on time and activity
 - **Standalone Operation**: No cloud dependencies or Home Assistant required
@@ -200,6 +202,23 @@ sudo systemctl status spotify-display
 - Date and day of week
 - Customizable colors
 
+### Retro Screensavers
+
+**Pipes Mode** 🔧
+- Classic Windows 3D Pipes aesthetic
+- Multiple colorful pipes growing across the display
+- Configurable number of pipes, speed, and trail effects
+- Perfect for nostalgic ambiance
+
+**DVD Logo Mode** 📀
+- Iconic bouncing DVD logo animation
+- Random color changes on edge hits
+- **Special rainbow mode** when hitting corners perfectly!
+- Corner hit counter display
+- Adjustable logo size and speed
+
+See [docs/SCREENSAVERS.md](docs/SCREENSAVERS.md) for detailed configuration and tips.
+
 ## Troubleshooting
 
 ### Display doesn't light up
@@ -260,10 +279,14 @@ rpi-zero-pixel-album-art/
 │   │   ├── music.py
 │   │   ├── weather.py
 │   │   ├── sports.py
-│   │   └── clock.py
+│   │   ├── clock.py
+│   │   ├── pipes.py            # Windows Pipes screensaver
+│   │   └── dvd_logo.py         # DVD Logo screensaver
 │   └── utils/
 │       ├── image_processor.py  # Image optimization for LED
 │       └── config_manager.py   # Configuration handling
+├── docs/
+│   └── SCREENSAVERS.md         # Screensaver documentation
 ├── web/                        # Web interface files
 │   ├── index.html
 │   ├── style.css

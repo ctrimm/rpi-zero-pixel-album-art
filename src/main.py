@@ -23,6 +23,8 @@ from modes.music import MusicMode
 from modes.weather import WeatherMode
 from modes.sports import SportsMode
 from modes.clock import ClockMode
+from modes.pipes import PipesMode
+from modes.dvd_logo import DVDLogoMode
 
 
 class SpotifyDisplayApp:
@@ -90,7 +92,9 @@ class SpotifyDisplayApp:
                 'music': MusicMode(self.display, self.spotify, self.config),
                 'weather': WeatherMode(self.display, self.config),
                 'sports': SportsMode(self.display, self.config),
-                'clock': ClockMode(self.display, self.config)
+                'clock': ClockMode(self.display, self.config),
+                'pipes': PipesMode(self.display, self.config),
+                'dvd_logo': DVDLogoMode(self.display, self.config)
             }
 
             # Initialize web server
