@@ -247,6 +247,14 @@ class SpotifyDisplayApp:
         """Switch to a different display mode"""
         if mode_name in self.modes:
             self.logger.info(f"Switching to {mode_name} mode")
+
+            # Reset music mode's display tracker when leaving music mode
+            # This ensures album art is redrawn when we return
+            if self.current_mode == 'music' and mode_name != 'music':
+                music_mode = self.modes.get('music')
+                if music_mode and hasattr(music_mode, 'last_displayed_track_id'):
+                    music_mode.last_displayed_track_id = None
+
             self.current_mode = mode_name
             # Clear display for new mode
             self.display.clear()
