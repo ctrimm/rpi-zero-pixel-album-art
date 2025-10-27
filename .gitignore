@@ -27,6 +27,7 @@ env/
 
 # Configuration and secrets
 config.json
+config.dev.json
 .env
 *.key
 *.pem
