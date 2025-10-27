@@ -33,6 +33,7 @@ class MusicMode:
         self.image_processor = ImageProcessor(config.get('image_processing', {}))
 
         self.current_track_id = None
+        self.last_displayed_track_id = None  # Track what's currently displayed
         self.last_update = 0
         self.update_interval = 5  # Check every 5 seconds
         self.first_update = True  # Flag for first update
@@ -65,16 +66,21 @@ class MusicMode:
                 self.logger.debug("No track currently playing")
                 self._display_placeholder()
                 self.current_track_id = None
+                self.last_displayed_track_id = None
                 time.sleep(2)
                 return
 
-            # Check if track changed
+            # Update current track ID
             if track_info['track_id'] != self.current_track_id:
                 self.logger.info(f"Track changed: {track_info['artist_name']} - {track_info['track_name']}")
                 self.current_track_id = track_info['track_id']
 
-                # Display album art and keep showing it
+            # CRITICAL: Display album art if track changed OR if we just switched back to music mode
+            # (last_displayed_track_id will be different if we were showing clock/other mode)
+            if track_info['track_id'] != self.last_displayed_track_id:
+                self.logger.debug(f"Displaying album art for: {track_info['track_name']}")
                 self._display_album_art(track_info)
+                self.last_displayed_track_id = track_info['track_id']
 
             # Track is still playing - just sleep and check again later
             # The album art stays on screen continuously (no need to redraw)

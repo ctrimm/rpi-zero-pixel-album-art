@@ -89,18 +89,22 @@ class SpotifyClient:
             # Get current playback
             current = self.sp.current_user_playing_track()
 
-            if not current or not current.get('is_playing'):
-                # Music genuinely stopped - clear cache and return None
+            if not current:
+                # No playback device active - clear cache and return None
                 self.cached_track_info = None
                 self.current_track_id = None
                 return None
 
-            track = current['item']
+            # IMPORTANT: Don't clear cache when paused!
+            # Return the track info with is_playing=False so we can keep showing the album art
+            track = current.get('item')
             if not track:
                 self.cached_track_info = None
                 return None
 
-            # Extract track information
+            is_playing = current.get('is_playing', False)
+
+            # Extract track information (even if paused!)
             track_info = {
                 'track_id': track['id'],
                 'track_name': track['name'],
@@ -109,7 +113,7 @@ class SpotifyClient:
                 'album_art_url': self._get_best_album_art(track['album']['images']),
                 'duration_ms': track['duration_ms'],
                 'progress_ms': current.get('progress_ms', 0),
-                'is_playing': current['is_playing']
+                'is_playing': is_playing
             }
 
             # Update current track ID and cache
