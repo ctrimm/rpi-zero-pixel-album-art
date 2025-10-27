@@ -30,6 +30,9 @@ class SpotifyClient:
         self.update_interval = config.get('update_interval', 10)
         self.cache_path = Path.home() / '.cache' / 'spotify-display'
 
+        # Cache the last known track info
+        self.cached_track_info = None
+
         # Ensure cache directory exists
         self.cache_path.mkdir(parents=True, exist_ok=True)
 
@@ -61,18 +64,25 @@ class SpotifyClient:
             self.logger.error(f"Failed to initialize Spotify client: {e}")
             raise
 
-    def get_current_track(self):
+    def get_current_track(self, force=False):
         """
         Get currently playing track information
 
+        Args:
+            force: If True, bypass rate limiting
+
         Returns:
-            dict: Track information or None if nothing is playing
+            dict: Track information if playing
+            None: If nothing is playing (from Spotify API)
+            cached_track_info: If rate limiting prevents new query
         """
         try:
             # Check if we should update (rate limiting)
             current_time = time.time()
-            if current_time - self.last_update < self.update_interval:
-                return None
+            if not force and current_time - self.last_update < self.update_interval:
+                # Return cached track info instead of None during rate limiting
+                # This allows the caller to know we're rate limited, not that music stopped
+                return self.cached_track_info
 
             self.last_update = current_time
 
@@ -80,10 +90,14 @@ class SpotifyClient:
             current = self.sp.current_user_playing_track()
 
             if not current or not current.get('is_playing'):
+                # Music genuinely stopped - clear cache and return None
+                self.cached_track_info = None
+                self.current_track_id = None
                 return None
 
             track = current['item']
             if not track:
+                self.cached_track_info = None
                 return None
 
             # Extract track information
@@ -98,16 +112,20 @@ class SpotifyClient:
                 'is_playing': current['is_playing']
             }
 
-            # Update current track ID
+            # Update current track ID and cache
             if self.current_track_id != track_info['track_id']:
                 self.logger.info(f"Now playing: {track_info['artist_name']} - {track_info['track_name']}")
                 self.current_track_id = track_info['track_id']
+
+            # Always update cache with latest info
+            self.cached_track_info = track_info
 
             return track_info
 
         except Exception as e:
             self.logger.error(f"Error getting current track: {e}")
-            return None
+            # On error, return cached info if available
+            return self.cached_track_info
 
     def _get_best_album_art(self, images):
         """
