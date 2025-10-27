@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Spotify LED Matrix Display</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: white;
+            color: #667eea;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .btn-danger {
+            background: #ff4757;
+            color: white;
+        }
+
+        .btn-success {
+            background: #26de81;
+            color: white;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            padding: 30px;
+            margin-bottom: 20px;
+        }
+
+        .panel h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 20px;
+        }
+
+        .message {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .message.error {
+            background: #fee;
+            color: #c33;
+            border: 1px solid #fcc;
+        }
+
+        .message.success {
+            background: #efe;
+            color: #3c3;
+            border: 1px solid #cfc;
+        }
+
+        .message.warning {
+            background: #ffeaa7;
+            color: #d63031;
+            border: 1px solid #fdcb6e;
+        }
+
+        .message.show {
+            display: block;
+        }
+
+        .editor-container {
+            position: relative;
+        }
+
+        .editor {
+            width: 100%;
+            min-height: 500px;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            resize: vertical;
+        }
+
+        .editor:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .editor-actions {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            color: #666;
+            transition: all 0.2s;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab:hover {
+            color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .status-card {
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .status-card h3 {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .status-card p {
+            font-size: 18px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            display: none;
+        }
+
+        .loading-overlay.active {
+            display: flex;
+        }
+
+        .loading-spinner {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .validation-errors {
+            background: #fee;
+            border: 1px solid #fcc;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .validation-errors.show {
+            display: block;
+        }
+
+        .validation-errors h4 {
+            color: #c33;
+            margin-bottom: 10px;
+        }
+
+        .validation-errors ul {
+            margin-left: 20px;
+            color: #c33;
+        }
+
+        .validation-errors li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1>🎵 Admin Panel</h1>
+            <div class="header-actions">
+                <button class="btn btn-secondary" onclick="window.location.href='/'">View Display</button>
+                <button class="btn btn-primary" onclick="logout()">Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="panel">
+            <h2>Configuration Editor</h2>
+
+            <div id="message" class="message"></div>
+            <div id="validationErrors" class="validation-errors">
+                <h4>Validation Errors:</h4>
+                <ul id="errorList"></ul>
+            </div>
+
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('editor')">JSON Editor</button>
+                <button class="tab" onclick="switchTab('status')">System Status</button>
+            </div>
+
+            <div id="editorTab" class="tab-content active">
+                <div class="editor-container">
+                    <textarea id="configEditor" class="editor" spellcheck="false"></textarea>
+                </div>
+
+                <div class="editor-actions">
+                    <button class="btn btn-success" onclick="saveConfig()">💾 Save Configuration</button>
+                    <button class="btn btn-primary" onclick="validateConfig()">✓ Validate</button>
+                    <button class="btn btn-secondary" onclick="reloadConfig()">🔄 Reload</button>
+                    <button class="btn btn-secondary" onclick="formatJSON()">✨ Format JSON</button>
+                </div>
+            </div>
+
+            <div id="statusTab" class="tab-content">
+                <div class="status-grid" id="statusGrid">
+                    <div class="status-card">
+                        <h3>Current Mode</h3>
+                        <p id="currentMode">Loading...</p>
+                    </div>
+                    <div class="status-card">
+                        <h3>Brightness</h3>
+                        <p id="brightness">Loading...</p>
+                    </div>
+                    <div class="status-card">
+                        <h3>Spotify Status</h3>
+                        <p id="spotifyStatus">Loading...</p>
+                    </div>
+                    <div class="status-card">
+                        <h3>Available Modes</h3>
+                        <p id="availableModes">Loading...</p>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <button class="btn btn-primary" onclick="refreshStatus()">🔄 Refresh Status</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Processing...</p>
+        </div>
+    </div>
+
+    <script>
+        let currentConfig = {};
+
+        // Check authentication on load
+        checkAuth();
+        loadConfig();
+
+        async function checkAuth() {
+            try {
+                const response = await fetch('/api/auth/check');
+                const data = await response.json();
+
+                if (!data.authenticated) {
+                    // Not authenticated, redirect to login
+                    window.location.href = '/login';
+                }
+            } catch (error) {
+                console.error('Error checking auth:', error);
+                window.location.href = '/login';
+            }
+        }
+
+        async function logout() {
+            try {
+                await fetch('/api/auth/logout', { method: 'POST' });
+                window.location.href = '/login';
+            } catch (error) {
+                console.error('Error logging out:', error);
+                window.location.href = '/login';
+            }
+        }
+
+        async function loadConfig() {
+            showLoading(true);
+            try {
+                const response = await fetch('/api/admin/config');
+
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+
+                if (!response.ok) {
+                    throw new Error('Failed to load configuration');
+                }
+
+                const config = await response.json();
+                currentConfig = config;
+                document.getElementById('configEditor').value = JSON.stringify(config, null, 2);
+                showMessage('Configuration loaded successfully', 'success');
+            } catch (error) {
+                showMessage('Error loading configuration: ' + error.message, 'error');
+            }
+            showLoading(false);
+        }
+
+        async function saveConfig() {
+            const editor = document.getElementById('configEditor');
+            let config;
+
+            // Parse JSON
+            try {
+                config = JSON.parse(editor.value);
+            } catch (error) {
+                showMessage('Invalid JSON: ' + error.message, 'error');
+                return;
+            }
+
+            showLoading(true);
+            hideValidationErrors();
+
+            try {
+                const response = await fetch('/api/admin/config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(config),
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    currentConfig = config;
+                    showMessage('Configuration saved and applied successfully!', 'success');
+                } else {
+                    showMessage('Error saving configuration: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                showMessage('Network error: ' + error.message, 'error');
+            }
+
+            showLoading(false);
+        }
+
+        async function validateConfig() {
+            const editor = document.getElementById('configEditor');
+            let config;
+
+            // Parse JSON
+            try {
+                config = JSON.parse(editor.value);
+            } catch (error) {
+                showMessage('Invalid JSON: ' + error.message, 'error');
+                return;
+            }
+
+            showLoading(true);
+            hideValidationErrors();
+
+            try {
+                const response = await fetch('/api/admin/config/validate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(config),
+                });
+
+                const data = await response.json();
+
+                if (data.valid) {
+                    showMessage('Configuration is valid! ✓', 'success');
+                } else {
+                    showMessage('Configuration has validation errors', 'error');
+                    showValidationErrors(data.errors);
+                }
+            } catch (error) {
+                showMessage('Error validating configuration: ' + error.message, 'error');
+            }
+
+            showLoading(false);
+        }
+
+        function reloadConfig() {
+            loadConfig();
+        }
+
+        function formatJSON() {
+            const editor = document.getElementById('configEditor');
+            try {
+                const config = JSON.parse(editor.value);
+                editor.value = JSON.stringify(config, null, 2);
+                showMessage('JSON formatted successfully', 'success');
+            } catch (error) {
+                showMessage('Invalid JSON: ' + error.message, 'error');
+            }
+        }
+
+        async function refreshStatus() {
+            showLoading(true);
+            try {
+                const response = await fetch('/api/status');
+                const status = await response.json();
+
+                document.getElementById('currentMode').textContent = status.current_mode || 'Unknown';
+                document.getElementById('brightness').textContent = status.brightness + '%';
+                document.getElementById('spotifyStatus').textContent = status.spotify_playing ? 'Playing' : 'Not Playing';
+                document.getElementById('availableModes').textContent = status.available_modes.join(', ');
+
+                showMessage('Status refreshed', 'success');
+            } catch (error) {
+                showMessage('Error refreshing status: ' + error.message, 'error');
+            }
+            showLoading(false);
+        }
+
+        function switchTab(tabName) {
+            // Remove active class from all tabs
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            // Add active class to selected tab
+            const tabs = ['editor', 'status'];
+            const index = tabs.indexOf(tabName);
+            document.querySelectorAll('.tab')[index].classList.add('active');
+            document.getElementById(tabName + 'Tab').classList.add('active');
+
+            // Load status if status tab is selected
+            if (tabName === 'status') {
+                refreshStatus();
+            }
+        }
+
+        function showMessage(text, type) {
+            const message = document.getElementById('message');
+            message.textContent = text;
+            message.className = 'message ' + type + ' show';
+
+            setTimeout(() => {
+                message.classList.remove('show');
+            }, 5000);
+        }
+
+        function showLoading(show) {
+            document.getElementById('loadingOverlay').classList.toggle('active', show);
+        }
+
+        function showValidationErrors(errors) {
+            const errorList = document.getElementById('errorList');
+            errorList.innerHTML = '';
+
+            errors.forEach(error => {
+                const li = document.createElement('li');
+                li.textContent = error;
+                errorList.appendChild(li);
+            });
+
+            document.getElementById('validationErrors').classList.add('show');
+        }
+
+        function hideValidationErrors() {
+            document.getElementById('validationErrors').classList.remove('show');
+        }
+    </script>
+</body>
+</html>
