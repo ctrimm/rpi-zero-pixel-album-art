@@ -71,6 +71,21 @@
     "show_scores_only_during_games": false,
     "comment": "team codes: GB=Green Bay Packers, NO=New Orleans Saints, etc."
   },
+  "screensavers": {
+    "pipes": {
+      "enabled": true,
+      "num_pipes": 4,
+      "speed": 0.05,
+      "fade_trail": true,
+      "background_color": [0, 0, 0]
+    },
+    "dvd_logo": {
+      "enabled": true,
+      "speed": 0.05,
+      "logo_width": 16,
+      "logo_height": 8
+    }
+  },
   "web_server": {
     "enabled": true,
     "host": "0.0.0.0",
