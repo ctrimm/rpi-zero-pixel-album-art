@@ -75,6 +75,16 @@ class WebServer:
             """Serve main page"""
             return send_from_directory('../web', 'index.html')
 
+        @self.flask_app.route('/style.css')
+        def serve_css():
+            """Serve CSS file"""
+            return send_from_directory('../web', 'style.css')
+
+        @self.flask_app.route('/script.js')
+        def serve_js():
+            """Serve JavaScript file"""
+            return send_from_directory('../web', 'script.js')
+
         @self.flask_app.route('/admin')
         def admin():
             """Serve admin panel page"""
