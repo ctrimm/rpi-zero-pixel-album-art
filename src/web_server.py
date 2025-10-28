@@ -4,8 +4,12 @@ Web Server - Flask-based web interface for controlling the display
 
 import logging
 import os
+import json
+import hashlib
+import secrets
 from pathlib import Path
-from flask import Flask, render_template, jsonify, request, send_from_directory
+from functools import wraps
+from flask import Flask, render_template, jsonify, request, send_from_directory, session, redirect, url_for
 from flask_cors import CORS
 
 
@@ -32,10 +36,36 @@ class WebServer:
         )
         CORS(self.flask_app)
 
+        # Setup session secret key
+        self.flask_app.secret_key = self.config.get('secret_key', secrets.token_hex(32))
+
+        # Admin credentials (in production, use proper password hashing and database)
+        self.admin_username = self.config.get('admin_username', 'admin')
+        self.admin_password_hash = self._hash_password(
+            self.config.get('admin_password', 'changeme')
+        )
+
         # Setup routes
         self._setup_routes()
 
         self.logger.info("Web server initialized")
+
+    def _hash_password(self, password):
+        """Hash password using SHA-256"""
+        return hashlib.sha256(password.encode()).hexdigest()
+
+    def _check_password(self, password):
+        """Check if password is correct"""
+        return self._hash_password(password) == self.admin_password_hash
+
+    def _login_required(self, f):
+        """Decorator to require login for admin routes"""
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not session.get('authenticated'):
+                return jsonify({'error': 'Authentication required'}), 401
+            return f(*args, **kwargs)
+        return decorated_function
 
     def _setup_routes(self):
         """Setup Flask routes"""
@@ -44,6 +74,51 @@ class WebServer:
         def index():
             """Serve main page"""
             return send_from_directory('../web', 'index.html')
+
+        @self.flask_app.route('/admin')
+        def admin():
+            """Serve admin panel page"""
+            return send_from_directory('../web', 'admin.html')
+
+        @self.flask_app.route('/login')
+        def login_page():
+            """Serve login page"""
+            return send_from_directory('../web', 'login.html')
+
+        @self.flask_app.route('/api/auth/login', methods=['POST'])
+        def login():
+            """Authenticate user"""
+            try:
+                data = request.get_json()
+                username = data.get('username')
+                password = data.get('password')
+
+                if not username or not password:
+                    return jsonify({'error': 'Username and password required'}), 400
+
+                if username == self.admin_username and self._check_password(password):
+                    session['authenticated'] = True
+                    session['username'] = username
+                    self.logger.info(f"User {username} logged in")
+                    return jsonify({'status': 'success', 'message': 'Login successful'})
+                else:
+                    self.logger.warning(f"Failed login attempt for user {username}")
+                    return jsonify({'error': 'Invalid credentials'}), 401
+
+            except Exception as e:
+                self.logger.error(f"Error during login: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.flask_app.route('/api/auth/logout', methods=['POST'])
+        def logout():
+            """Logout user"""
+            session.clear()
+            return jsonify({'status': 'success', 'message': 'Logged out'})
+
+        @self.flask_app.route('/api/auth/check')
+        def check_auth():
+            """Check if user is authenticated"""
+            return jsonify({'authenticated': session.get('authenticated', False)})
 
         @self.flask_app.route('/api/status')
         def get_status():
@@ -136,6 +211,68 @@ class WebServer:
 
             except Exception as e:
                 self.logger.error(f"Error clearing display: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.flask_app.route('/api/admin/config', methods=['GET'])
+        @self._login_required
+        def get_config():
+            """Get current configuration (admin only)"""
+            try:
+                config = self.app_instance.config_manager.config
+                return jsonify(config)
+            except Exception as e:
+                self.logger.error(f"Error getting config: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.flask_app.route('/api/admin/config', methods=['POST'])
+        @self._login_required
+        def update_config():
+            """Update configuration (admin only)"""
+            try:
+                data = request.get_json()
+                if not data:
+                    return jsonify({'error': 'No configuration data provided'}), 400
+
+                # Update the configuration
+                success = self.app_instance.update_config(data)
+
+                if success:
+                    return jsonify({
+                        'status': 'success',
+                        'message': 'Configuration updated successfully'
+                    })
+                else:
+                    return jsonify({'error': 'Failed to update configuration'}), 500
+
+            except Exception as e:
+                self.logger.error(f"Error updating config: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.flask_app.route('/api/admin/config/validate', methods=['POST'])
+        @self._login_required
+        def validate_config():
+            """Validate configuration without applying (admin only)"""
+            try:
+                data = request.get_json()
+                if not data:
+                    return jsonify({'error': 'No configuration data provided'}), 400
+
+                # Validate the configuration
+                valid, errors = self.app_instance.config_manager.validate_config(data)
+
+                if valid:
+                    return jsonify({
+                        'valid': True,
+                        'message': 'Configuration is valid'
+                    })
+                else:
+                    return jsonify({
+                        'valid': False,
+                        'errors': errors
+                    }), 400
+
+            except Exception as e:
+                self.logger.error(f"Error validating config: {e}")
                 return jsonify({'error': str(e)}), 500
 
         @self.flask_app.route('/health')

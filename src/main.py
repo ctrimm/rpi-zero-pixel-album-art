@@ -289,6 +289,50 @@ class SpotifyDisplayApp:
             self.display.set_brightness(brightness)
         self.logger.info(f"Brightness set to {brightness}")
 
+    def update_config(self, new_config):
+        """
+        Update configuration and apply changes live
+
+        Args:
+            new_config: New configuration dictionary
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Update configuration via config manager
+            if not self.config_manager.update_config(new_config):
+                return False
+
+            # Reload configuration reference
+            self.config = self.config_manager.config
+
+            # Apply configuration changes without restart
+            self.logger.info("Applying configuration changes...")
+
+            # Update display brightness if changed
+            if 'display' in new_config and 'brightness' in new_config['display']:
+                self.set_brightness(new_config['display']['brightness'])
+
+            # Update Spotify settings if needed
+            if 'spotify' in new_config and self.spotify:
+                # Spotify client would need to be reinitialized for some changes
+                # For now, just log that a restart may be needed
+                self.logger.info("Spotify configuration changed - some changes may require restart")
+
+            # Update mode if changed
+            if 'modes' in new_config and 'default' in new_config['modes']:
+                new_default = new_config['modes']['default']
+                if new_default != self.current_mode and new_default in self.modes:
+                    self.switch_mode(new_default)
+
+            self.logger.info("Configuration changes applied successfully")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error updating configuration: {e}", exc_info=True)
+            return False
+
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals"""
         self.logger.info(f"Received signal {signum}, shutting down gracefully...")

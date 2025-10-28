@@ -143,3 +143,112 @@ class ConfigManager:
             config = config[key]
 
         config[keys[-1]] = value
+
+    def validate_config(self, config):
+        """
+        Validate configuration without loading it
+
+        Args:
+            config: Configuration dictionary to validate
+
+        Returns:
+            tuple: (is_valid: bool, errors: list)
+        """
+        errors = []
+
+        # Define required keys
+        required_keys = {
+            'spotify': ['client_id', 'client_secret', 'redirect_uri'],
+            'display': ['rows', 'cols', 'brightness']
+        }
+
+        # Check required keys
+        for section, keys in required_keys.items():
+            if section not in config:
+                errors.append(f"Missing required configuration section: {section}")
+                continue
+
+            for key in keys:
+                if key not in config[section]:
+                    errors.append(f"Missing required configuration key: {section}.{key}")
+
+        # Validate specific value types and ranges
+        if 'display' in config:
+            if 'brightness' in config['display']:
+                brightness = config['display']['brightness']
+                if not isinstance(brightness, (int, float)) or brightness < 0 or brightness > 100:
+                    errors.append("display.brightness must be between 0 and 100")
+
+            if 'rows' in config['display']:
+                rows = config['display']['rows']
+                if not isinstance(rows, int) or rows <= 0:
+                    errors.append("display.rows must be a positive integer")
+
+            if 'cols' in config['display']:
+                cols = config['display']['cols']
+                if not isinstance(cols, int) or cols <= 0:
+                    errors.append("display.cols must be a positive integer")
+
+        if 'web_server' in config and 'port' in config['web_server']:
+            port = config['web_server']['port']
+            if not isinstance(port, int) or port < 1 or port > 65535:
+                errors.append("web_server.port must be between 1 and 65535")
+
+        return (len(errors) == 0, errors)
+
+    def update_config(self, new_config):
+        """
+        Update configuration with new values
+
+        Args:
+            new_config: New configuration dictionary
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Validate new configuration
+            valid, errors = self.validate_config(new_config)
+            if not valid:
+                self.logger.error(f"Configuration validation failed: {errors}")
+                return False
+
+            # Backup current config
+            old_config = self.config.copy()
+
+            try:
+                # Update configuration
+                self.config = self._validate_config(new_config)
+
+                # Save to file
+                if self.save_config():
+                    self.logger.info("Configuration updated successfully")
+                    return True
+                else:
+                    # Restore old config if save failed
+                    self.config = old_config
+                    return False
+
+            except Exception as e:
+                # Restore old config on error
+                self.config = old_config
+                self.logger.error(f"Error applying configuration: {e}")
+                return False
+
+        except Exception as e:
+            self.logger.error(f"Error updating configuration: {e}")
+            return False
+
+    def reload_config(self):
+        """
+        Reload configuration from file
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            self.config = self.load_config()
+            return True
+        except Exception as e:
+            self.logger.error(f"Error reloading configuration: {e}")
+            return False

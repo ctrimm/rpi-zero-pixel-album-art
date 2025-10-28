@@ -20,6 +20,7 @@ A standalone Raspberry Pi solution that displays album art, weather, and sports 
   - 🔧 Pipes: Classic Windows 3D Pipes screensaver
   - 📀 DVD Logo: Bouncing DVD logo with rainbow corner hits
 - **Web Interface**: Simple browser-based control accessible from any device on your network
+- **🔐 Admin Panel**: Secure web-based configuration editor with live updates (no restart required!)
 - **Automatic Mode Switching**: Smart scheduling based on time and activity
 - **Standalone Operation**: No cloud dependencies or Home Assistant required
 - **Nostalgic Weather Display**: Recreation of the iconic "Local on the 8s" feature
@@ -192,6 +193,27 @@ Access the control panel at `http://your-pi-ip:5000`:
 - Adjust brightness
 - View currently playing track
 - Configure schedules
+
+### Admin Panel
+
+Access the secure admin panel at `http://your-pi-ip:5000/login`:
+
+**Features:**
+- 🔐 Password-protected access
+- 📝 Edit configuration JSON in your browser
+- ✓ Validate changes before saving
+- 💾 Apply changes immediately without restart
+- 📊 View system status in real-time
+
+**Quick Start:**
+1. Navigate to `http://your-pi-ip:5000/login`
+2. Login with credentials from your config.json:
+   - Default username: `admin`
+   - Default password: `changeme` (⚠️ **change this!**)
+3. Edit configuration and click "Save Configuration"
+4. Changes apply instantly!
+
+See [docs/ADMIN_PANEL.md](docs/ADMIN_PANEL.md) for detailed documentation and security best practices.
 
 ### Manual Mode Switching
 
