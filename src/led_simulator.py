@@ -5,7 +5,7 @@ Provides a visual window showing the 64x64 LED matrix for local development
 
 import logging
 import tkinter as tk
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageDraw
 import threading
 import time
 import queue
