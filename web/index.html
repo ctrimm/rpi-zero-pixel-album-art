@@ -9,10 +9,15 @@
 <body>
     <div class="container">
         <header>
-            <h1>🎵 Spotify LED Matrix Display</h1>
-            <div class="status-indicator" id="connectionStatus">
-                <span class="dot"></span>
-                <span id="statusText">Connecting...</span>
+            <div class="header-left">
+                <h1>🎵 Spotify LED Matrix Display</h1>
+                <div class="status-indicator" id="connectionStatus">
+                    <span class="dot"></span>
+                    <span id="statusText">Connecting...</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <button class="auth-btn" id="authBtn" onclick="handleAuth()">Login</button>
             </div>
         </header>
 
@@ -107,6 +112,88 @@
                     </button>
                     <button class="action-btn" onclick="refreshStatus()">
                         🔄 Refresh Status
+                    </button>
+                </div>
+            </section>
+
+            <!-- Settings (only visible when authenticated) -->
+            <section class="card" id="settingsSection" style="display: none;">
+                <h2>⚙️ Settings</h2>
+
+                <div class="settings-group">
+                    <h3>Display Configuration</h3>
+                    <div class="setting-row">
+                        <label for="defaultMode">Default Mode:</label>
+                        <select id="defaultMode" class="setting-input">
+                            <option value="music">Music</option>
+                            <option value="weather">Weather</option>
+                            <option value="sports">Sports</option>
+                            <option value="clock">Clock</option>
+                            <option value="pipes">Pipes</option>
+                            <option value="dvd_logo">DVD Logo</option>
+                        </select>
+                    </div>
+                    <div class="setting-row">
+                        <label for="autoSwitch">Auto Mode Switching:</label>
+                        <input type="checkbox" id="autoSwitch" class="setting-checkbox">
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h3>Weather Settings</h3>
+                    <div class="setting-row">
+                        <label for="weatherEnabled">Enable Weather:</label>
+                        <input type="checkbox" id="weatherEnabled" class="setting-checkbox">
+                    </div>
+                    <div class="setting-row">
+                        <label for="weatherApiKey">API Key:</label>
+                        <input type="password" id="weatherApiKey" class="setting-input" placeholder="OpenWeatherMap API Key">
+                    </div>
+                    <div class="setting-row">
+                        <label for="weatherLocation">Location:</label>
+                        <input type="text" id="weatherLocation" class="setting-input" placeholder="New York,US">
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h3>Sports Settings</h3>
+                    <div class="setting-row">
+                        <label for="sportsEnabled">Enable Sports:</label>
+                        <input type="checkbox" id="sportsEnabled" class="setting-checkbox">
+                    </div>
+                    <div class="setting-row">
+                        <label for="sportsLeague">League:</label>
+                        <select id="sportsLeague" class="setting-input">
+                            <option value="NFL">NFL</option>
+                            <option value="NBA">NBA</option>
+                            <option value="MLB">MLB</option>
+                            <option value="NHL">NHL</option>
+                        </select>
+                    </div>
+                    <div class="setting-row">
+                        <label for="sportsTeam">Team Code:</label>
+                        <input type="text" id="sportsTeam" class="setting-input" placeholder="NO">
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h3>Screensaver Settings</h3>
+                    <div class="setting-row">
+                        <label for="pipesEnabled">Enable Pipes:</label>
+                        <input type="checkbox" id="pipesEnabled" class="setting-checkbox">
+                    </div>
+                    <div class="setting-row">
+                        <label for="dvdLogoEnabled">Enable DVD Logo:</label>
+                        <input type="checkbox" id="dvdLogoEnabled" class="setting-checkbox">
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button class="action-btn" style="background: var(--primary-color); font-weight: bold;" onclick="saveSettings()">
+                        💾 Save Settings
+                    </button>
+                    <button class="action-btn" onclick="loadSettings()">
+                        🔄 Reload Settings
                     </button>
                 </div>
             </section>

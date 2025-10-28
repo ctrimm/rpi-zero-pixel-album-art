@@ -7,9 +7,13 @@ const API_BASE = window.location.origin;
 const REFRESH_INTERVAL = 5000;
 let refreshTimer = null;
 
+// Auth state
+let isAuthenticated = false;
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Initializing Spotify LED Matrix Display interface...');
+    checkAuthentication();
     refreshStatus();
     startAutoRefresh();
 });
@@ -245,3 +249,150 @@ document.addEventListener('visibilitychange', () => {
         startAutoRefresh();
     }
 });
+
+// ===== AUTHENTICATION =====
+
+async function checkAuthentication() {
+    try {
+        const response = await fetch(`${API_BASE}/api/auth/check`);
+        const data = await response.json();
+
+        isAuthenticated = data.authenticated || false;
+        updateAuthUI();
+
+        if (isAuthenticated) {
+            loadSettings();
+        }
+    } catch (error) {
+        console.error('Error checking authentication:', error);
+        isAuthenticated = false;
+        updateAuthUI();
+    }
+}
+
+function updateAuthUI() {
+    const authBtn = document.getElementById('authBtn');
+    const settingsSection = document.getElementById('settingsSection');
+
+    if (isAuthenticated) {
+        authBtn.textContent = 'Logout';
+        authBtn.classList.add('logout');
+        settingsSection.style.display = 'block';
+    } else {
+        authBtn.textContent = 'Login';
+        authBtn.classList.remove('logout');
+        settingsSection.style.display = 'none';
+    }
+}
+
+async function handleAuth() {
+    if (isAuthenticated) {
+        // Logout
+        try {
+            await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST' });
+            isAuthenticated = false;
+            updateAuthUI();
+            alert('Logged out successfully');
+        } catch (error) {
+            console.error('Error logging out:', error);
+        }
+    } else {
+        // Redirect to login page
+        window.location.href = '/login';
+    }
+}
+
+// ===== SETTINGS =====
+
+async function loadSettings() {
+    if (!isAuthenticated) {
+        alert('Please login to view settings');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/api/admin/config`);
+        if (!response.ok) throw new Error('Failed to load settings');
+
+        const config = await response.json();
+
+        // Display settings
+        document.getElementById('defaultMode').value = config.modes?.default || 'music';
+        document.getElementById('autoSwitch').checked = config.modes?.auto_switch !== false;
+
+        // Weather settings
+        document.getElementById('weatherEnabled').checked = config.weather?.enabled || false;
+        document.getElementById('weatherApiKey').value = config.weather?.api_key || '';
+        document.getElementById('weatherLocation').value = config.weather?.location || 'New York,US';
+
+        // Sports settings
+        document.getElementById('sportsEnabled').checked = config.sports?.enabled || false;
+        document.getElementById('sportsLeague').value = config.sports?.league || 'NFL';
+        document.getElementById('sportsTeam').value = config.sports?.team || '';
+
+        // Screensaver settings
+        document.getElementById('pipesEnabled').checked = config.screensavers?.pipes?.enabled !== false;
+        document.getElementById('dvdLogoEnabled').checked = config.screensavers?.dvd_logo?.enabled !== false;
+
+        console.log('Settings loaded successfully');
+    } catch (error) {
+        console.error('Error loading settings:', error);
+        alert('Failed to load settings. Please check authentication.');
+    }
+}
+
+async function saveSettings() {
+    if (!isAuthenticated) {
+        alert('Please login to save settings');
+        return;
+    }
+
+    try {
+        // Get current config first
+        const response = await fetch(`${API_BASE}/api/admin/config`);
+        if (!response.ok) throw new Error('Failed to load current config');
+
+        const config = await response.json();
+
+        // Update with form values
+        config.modes = config.modes || {};
+        config.modes.default = document.getElementById('defaultMode').value;
+        config.modes.auto_switch = document.getElementById('autoSwitch').checked;
+
+        config.weather = config.weather || {};
+        config.weather.enabled = document.getElementById('weatherEnabled').checked;
+        config.weather.api_key = document.getElementById('weatherApiKey').value;
+        config.weather.location = document.getElementById('weatherLocation').value;
+
+        config.sports = config.sports || {};
+        config.sports.enabled = document.getElementById('sportsEnabled').checked;
+        config.sports.league = document.getElementById('sportsLeague').value;
+        config.sports.team = document.getElementById('sportsTeam').value;
+
+        config.screensavers = config.screensavers || {};
+        config.screensavers.pipes = config.screensavers.pipes || {};
+        config.screensavers.pipes.enabled = document.getElementById('pipesEnabled').checked;
+        config.screensavers.dvd_logo = config.screensavers.dvd_logo || {};
+        config.screensavers.dvd_logo.enabled = document.getElementById('dvdLogoEnabled').checked;
+
+        // Save config
+        const saveResponse = await fetch(`${API_BASE}/api/admin/config`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(config)
+        });
+
+        if (!saveResponse.ok) {
+            const error = await saveResponse.json();
+            throw new Error(error.error || 'Failed to save settings');
+        }
+
+        alert('✓ Settings saved successfully! Changes applied immediately.');
+        refreshStatus();
+    } catch (error) {
+        console.error('Error saving settings:', error);
+        alert('Failed to save settings: ' + error.message);
+    }
+}

@@ -32,16 +32,48 @@ body {
 
 /* Header */
 header {
-    text-align: center;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: var(--spacing);
     padding: var(--spacing);
     background: var(--card-bg);
     border-radius: var(--border-radius);
 }
 
+.header-left {
+    text-align: left;
+}
+
+.header-right {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
 header h1 {
     font-size: 2rem;
     margin-bottom: 10px;
+}
+
+.auth-btn {
+    padding: 10px 20px;
+    background: var(--primary-color);
+    border: none;
+    border-radius: var(--border-radius);
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.auth-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(29, 185, 84, 0.3);
+}
+
+.auth-btn.logout {
+    background: rgba(255, 255, 255, 0.2);
 }
 
 .status-indicator {
@@ -268,6 +300,61 @@ footer p {
     margin: 5px 0;
 }
 
+/* Settings Section */
+.settings-group {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
+.settings-group h3 {
+    color: var(--primary-color);
+    font-size: 1.1rem;
+    margin-bottom: 15px;
+}
+
+.setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.setting-row:last-child {
+    border-bottom: none;
+}
+
+.setting-row label {
+    flex: 1;
+    color: var(--text-color);
+    font-size: 0.95rem;
+}
+
+.setting-input {
+    flex: 2;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 5px;
+    color: var(--text-color);
+    font-size: 0.9rem;
+}
+
+.setting-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.setting-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    accent-color: var(--primary-color);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .track-info {
@@ -281,5 +368,24 @@ footer p {
 
     .action-buttons {
         grid-template-columns: 1fr;
+    }
+
+    header {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .header-left {
+        text-align: center;
+    }
+
+    .setting-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .setting-input {
+        width: 100%;
     }
 }
