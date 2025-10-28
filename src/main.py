@@ -347,6 +347,26 @@ class SpotifyDisplayApp:
                 if new_default != self.current_mode and new_default in self.modes:
                     self.switch_mode(new_default)
 
+            # Reinitialize weather mode if config changed
+            if 'weather' in new_config:
+                self.logger.info("Reinitializing weather mode with new configuration")
+                from modes.weather import WeatherMode
+                self.modes['weather'] = WeatherMode(self.display, self.config)
+
+            # Reinitialize sports mode if config changed
+            if 'sports' in new_config:
+                self.logger.info("Reinitializing sports mode with new configuration")
+                from modes.sports import SportsMode
+                self.modes['sports'] = SportsMode(self.display, self.config)
+
+            # Reinitialize screensavers if config changed
+            if 'screensavers' in new_config:
+                self.logger.info("Reinitializing screensaver modes with new configuration")
+                from modes.pipes import PipesMode
+                from modes.dvd_logo import DVDLogoMode
+                self.modes['pipes'] = PipesMode(self.display, self.config)
+                self.modes['dvd_logo'] = DVDLogoMode(self.display, self.config)
+
             self.logger.info("Configuration changes applied successfully")
             return True
 
