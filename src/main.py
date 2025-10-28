@@ -52,6 +52,8 @@ class SpotifyDisplayApp:
         self.current_mode = self.config['modes']['default']
         self.running = False
         self.mode_thread = None
+        self.manual_mode = False  # Track if user manually selected a mode
+        self.manual_mode_time = 0  # Time of last manual mode change
 
     def _setup_logging(self):
         """Configure application logging"""
@@ -217,7 +219,8 @@ class SpotifyDisplayApp:
             if self.spotify.is_playing():
                 if self.current_mode != 'music':
                     self.logger.info("Auto-switching to music mode (Spotify playing)")
-                    self.switch_mode('music')
+                    self.switch_mode('music', manual=False)
+                    self.manual_mode = False  # Clear manual mode when auto-switching
                 return  # Stay in music mode, don't check other modes
 
         # Check time-based schedules
@@ -232,8 +235,13 @@ class SpotifyDisplayApp:
                     if start <= current_time <= end:
                         if self.current_mode != mode_name:
                             self.logger.info(f"Auto-switching to {mode_name} mode (scheduled)")
-                            self.switch_mode(mode_name)
+                            self.switch_mode(mode_name, manual=False)
+                            self.manual_mode = False  # Clear manual mode when auto-switching
                         return
+
+        # Skip fallback logic if user manually selected a mode
+        if self.manual_mode:
+            return
 
         # Fall back to clock ONLY if music is not playing
         # This prevents switching away from music mode during brief API check gaps
@@ -242,13 +250,19 @@ class SpotifyDisplayApp:
             # Only switch to clock if we're not in music mode OR music has actually stopped
             if self.current_mode == 'music' and not self.spotify.is_playing():
                 self.logger.info("Music stopped - switching to clock mode (fallback)")
-                self.switch_mode('clock')
+                self.switch_mode('clock', manual=False)
             elif self.current_mode != 'clock' and self.current_mode != 'music':
                 self.logger.info("Switching to clock mode (fallback)")
-                self.switch_mode('clock')
+                self.switch_mode('clock', manual=False)
 
-    def switch_mode(self, mode_name):
-        """Switch to a different display mode"""
+    def switch_mode(self, mode_name, manual=True):
+        """
+        Switch to a different display mode
+
+        Args:
+            mode_name: Name of the mode to switch to
+            manual: True if user manually selected this mode, False if auto-switched
+        """
         if mode_name in self.modes:
             self.logger.info(f"Switching to {mode_name} mode")
 
@@ -260,6 +274,13 @@ class SpotifyDisplayApp:
                     music_mode.last_displayed_track_id = None
 
             self.current_mode = mode_name
+
+            # Set manual mode flag to prevent auto-switching from overriding
+            if manual:
+                self.manual_mode = True
+                self.manual_mode_time = time.time()
+                self.logger.debug(f"Manual mode activated for {mode_name}")
+
             # Clear display for new mode
             self.display.clear()
             return True
