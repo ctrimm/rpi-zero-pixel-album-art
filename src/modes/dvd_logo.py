@@ -34,7 +34,7 @@ class DVDLogoMode:
 
         # Configuration
         self.enabled = self.dvd_config.get('enabled', True)
-        self.speed = self.dvd_config.get('speed', 0.05)  # seconds between updates
+        self.speed = self.dvd_config.get('speed', 0.016)  # ~60 FPS for smooth animation
         self.logo_width = self.dvd_config.get('logo_width', 16)
         self.logo_height = self.dvd_config.get('logo_height', 8)
 
@@ -90,11 +90,10 @@ class DVDLogoMode:
     def update(self):
         """Update DVD logo screensaver"""
         try:
-            # Rate limiting
+            # Rate limiting for smooth animation
             current_time = time.time()
             if current_time - self.last_update < self.speed:
-                time.sleep(0.01)
-                return
+                return  # Skip frame but don't sleep - keeps animation smooth
 
             self.last_update = current_time
 

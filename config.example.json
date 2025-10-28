@@ -75,15 +75,17 @@
     "pipes": {
       "enabled": true,
       "num_pipes": 4,
-      "speed": 0.05,
+      "speed": 0.033,
       "fade_trail": true,
-      "background_color": [0, 0, 0]
+      "background_color": [0, 0, 0],
+      "comment": "speed: seconds between frames (0.033 = ~30 FPS)"
     },
     "dvd_logo": {
       "enabled": true,
-      "speed": 0.05,
+      "speed": 0.016,
       "logo_width": 16,
-      "logo_height": 8
+      "logo_height": 8,
+      "comment": "speed: seconds between frames (0.016 = ~60 FPS)"
     }
   },
   "web_server": {

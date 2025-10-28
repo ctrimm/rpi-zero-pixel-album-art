@@ -89,7 +89,7 @@ class PipesMode:
         # Configuration
         self.enabled = self.pipes_config.get('enabled', True)
         self.num_pipes = self.pipes_config.get('num_pipes', 4)
-        self.speed = self.pipes_config.get('speed', 0.05)  # seconds between updates
+        self.speed = self.pipes_config.get('speed', 0.033)  # ~30 FPS for smooth pipe growth
         self.fade_trail = self.pipes_config.get('fade_trail', True)
         self.background_color = tuple(self.pipes_config.get('background_color', [0, 0, 0]))
 
@@ -140,11 +140,10 @@ class PipesMode:
     def update(self):
         """Update pipes screensaver"""
         try:
-            # Rate limiting
+            # Rate limiting for smooth animation
             current_time = time.time()
             if current_time - self.last_update < self.speed:
-                time.sleep(0.01)
-                return
+                return  # Skip frame but don't sleep - keeps animation smooth
 
             self.last_update = current_time
 
