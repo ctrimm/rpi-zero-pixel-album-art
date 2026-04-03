@@ -253,6 +253,6 @@ class ScreensaverMode:
         bmp = self._bitmap
         if bmp is None:
             return
-        for y in range(H):
-            for x in range(W):
-                bmp[x, y] = 0
+        # displayio.Bitmap.fill() is a C-level call (CircuitPython 7+),
+        # far faster than the equivalent 4096-iteration Python loop.
+        bmp.fill(0)

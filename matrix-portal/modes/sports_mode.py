@@ -41,6 +41,7 @@ class SportsMode:
         self._team_label = None
         self._score_label = None
         self._status_label = None
+        self._detail_label = None
         self._matchup_scroller = None
 
         self._last_update = 0
@@ -84,6 +85,10 @@ class SportsMode:
 
     def on_exit(self):
         self._group = None
+        self._league_label = None
+        self._score_label = None
+        self._status_label = None
+        self._detail_label = None
         self._matchup_scroller = None
         gc.collect()
 

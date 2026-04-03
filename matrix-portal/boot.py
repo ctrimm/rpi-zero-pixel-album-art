@@ -1,9 +1,25 @@
 # boot.py — runs before code.py on every power-on
-# To edit files on CIRCUITPY, hold BOOT button while plugging in USB
-# to re-enable the USB drive temporarily.
+#
+# IMPORTANT: This remounts the filesystem as writable by CircuitPython code.
+# This is required so the device can save album art BMPs to flash.
+# As a side-effect, the CIRCUITPY USB drive becomes READ-ONLY on the host.
+#
+# To edit files on CIRCUITPY:
+#   Hold the UP button (board.BUTTON_UP) while plugging in USB.
+#   The drive will be writable from the host, but code cannot write files.
 
+import storage
+import digitalio
+import board
 import supervisor
 
-# Disable auto-reload so the display isn't interrupted by file saves.
-# Comment this out during development if you want live reload.
 supervisor.runtime.autoreload = False
+
+# Check if UP button is held — if so, give USB write access for file editing
+button = digitalio.DigitalInOut(board.BUTTON_UP)
+button.switch_to_input(pull=digitalio.Pull.UP)
+
+if button.value:
+    # Button NOT held → normal run: code can write files, USB drive is read-only
+    storage.remount("/", readonly=False)
+# else: button held → USB drive is writable, but code cannot write files

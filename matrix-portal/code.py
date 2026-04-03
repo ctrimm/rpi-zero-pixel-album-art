@@ -13,6 +13,7 @@ import rgbmatrix
 import framebufferio
 import gc
 import os
+import rtc
 import time
 
 # ── Display init ───────────────────────────────────────────────────────────────
@@ -236,7 +237,6 @@ print(f"Started — mode: {current_mode_name}  RAM: {gc.mem_free()} bytes")
 while True:
     try:
         now = time.monotonic()
-        import rtc
         t = rtc.RTC().datetime
 
         # ── Periodic time sync ────────────────────────────────────────────────

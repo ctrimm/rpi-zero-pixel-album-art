@@ -56,16 +56,21 @@ class NetworkHelper:
         self.requests = adafruit_requests.Session(pool, ssl.create_default_context())
 
     def _connect_spi(self):
-        esp32_cs = digitalio.DigitalInOut(board.ESP_CS)
-        esp32_ready = digitalio.DigitalInOut(board.ESP_BUSY)
-        esp32_reset = digitalio.DigitalInOut(board.ESP_RESET)
-        spi = busio.SPI(board.SCK, board.MOSI, board.MISO)
-        esp = adafruit_esp32spi.ESP_SPIcontrol(spi, esp32_cs, esp32_ready, esp32_reset)
-        socket.set_interface(esp)
+        # Store all hardware objects on self so they are NOT garbage-collected.
+        # If esp/spi/pins are local variables they get GC'd after connect() returns,
+        # which silently breaks all subsequent network requests.
+        self._esp32_cs    = digitalio.DigitalInOut(board.ESP_CS)
+        self._esp32_ready = digitalio.DigitalInOut(board.ESP_BUSY)
+        self._esp32_reset = digitalio.DigitalInOut(board.ESP_RESET)
+        self._spi = busio.SPI(board.SCK, board.MOSI, board.MISO)
+        self._esp = adafruit_esp32spi.ESP_SPIcontrol(
+            self._spi, self._esp32_cs, self._esp32_ready, self._esp32_reset
+        )
+        socket.set_interface(self._esp)
 
-        while not esp.is_connected:
+        while not self._esp.is_connected:
             try:
-                esp.connect_AP(self.ssid, self.password)
+                self._esp.connect_AP(self.ssid, self.password)
             except RuntimeError as e:
                 print(f"ESP32 connect error: {e}, retrying...")
                 time.sleep(1)
@@ -80,7 +85,6 @@ class NetworkHelper:
             url = "http://worldtimeapi.org/api/ip"
             resp = self.get_json(url)
             if resp and "unixtime" in resp:
-                import adafruit_datetime as adt
                 epoch = resp["unixtime"] + (self.timezone_offset * 3600)
                 t = time.localtime(epoch)
                 rtc.RTC().datetime = t
@@ -133,15 +137,20 @@ class NetworkHelper:
         return None
 
     def save_url_to_file(self, url, filepath, headers=None):
-        """Stream a URL response to a file (memory-efficient for images)."""
+        """Download a URL and save it to a file on the CIRCUITPY filesystem.
+
+        Uses resp.content (loads into RAM) rather than iter_content because
+        adafruit_requests does not guarantee iter_content across library versions.
+        A 64x64 256-color BMP is ~5 KB, well within the M4's RAM budget.
+        """
         if not self.requests:
             return False
         try:
             resp = self.requests.get(url, headers=headers)
-            with open(filepath, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=64):
-                    f.write(chunk)
+            data = resp.content
             resp.close()
+            with open(filepath, "wb") as f:
+                f.write(data)
             return True
         except Exception as e:
             print(f"Save URL to file failed: {e}")
