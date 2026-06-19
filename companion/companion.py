@@ -322,7 +322,9 @@ def get_sports():
 
     try:
         url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league_path}/scoreboard"
-        resp = requests.get(url, timeout=10)
+        # ESPN rejects requests without a browser-like User-Agent.
+        resp = requests.get(url, timeout=10,
+                            headers={"User-Agent": "Mozilla/5.0 (Matrix Portal Companion)"})
         resp.raise_for_status()
         data = resp.json()
 
@@ -399,17 +401,52 @@ def matrix_sports():
 
 # ── Web control panel endpoints (compatible with existing web/) ────────────────
 
+WEB_MODES = ["music", "weather", "sports", "clock", "screensaver"]
+
+
 @app.get("/api/status")
 def web_status():
     track = spotify_mgr.get_track()
+    playing = track.get("is_playing", False)
     return jsonify({
-        "mode":       _matrix_state["mode"],
-        "brightness": _matrix_state["brightness"],
-        "is_playing": track.get("is_playing", False),
-        "track":      track.get("title", ""),
-        "artist":     track.get("artist", ""),
-        "album":      track.get("album", ""),
+        # Keys the bundled web/ front-end (originally written for the Pi
+        # server) actually reads:
+        "current_mode":    _matrix_state["mode"],
+        "available_modes": WEB_MODES,
+        "brightness":      _matrix_state["brightness"],
+        "spotify_playing": playing,
+        "running":         True,
+        # Original companion keys, kept for any other consumers:
+        "mode":            _matrix_state["mode"],
+        "is_playing":      playing,
+        "track":           track.get("title", ""),
+        "artist":          track.get("artist", ""),
+        "album":           track.get("album", ""),
     })
+
+
+@app.get("/api/spotify/current")
+def web_spotify_current():
+    """Now-playing info in the shape the bundled web/script.js expects."""
+    track = spotify_mgr.get_track()
+    if not track.get("is_playing"):
+        return jsonify({"message": "Nothing playing"})
+    return jsonify({
+        "track_name":    track.get("title", ""),
+        "artist_name":   track.get("artist", ""),
+        "album_name":    track.get("album", ""),
+        "album_art_url": track.get("art_url", ""),
+        "is_playing":    True,
+    })
+
+
+@app.get("/api/auth/check")
+def web_auth_check():
+    # The companion has no admin login - it's configured via
+    # companion_config.json (or the companion's own /api/config endpoint),
+    # so report unauthenticated. The web UI then keeps the admin settings
+    # panel hidden while the mode/brightness/now-playing controls work.
+    return jsonify({"authenticated": False})
 
 
 @app.post("/api/mode")

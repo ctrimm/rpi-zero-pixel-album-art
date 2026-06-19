@@ -22,6 +22,9 @@ except ImportError:
 class NetworkHelper:
     """Handles WiFi connection and HTTP requests for both M4 (ESP32 SPI) and S3 boards."""
 
+    # Some APIs (notably ESPN) reject requests without a User-Agent.
+    _DEFAULT_HEADERS = {"User-Agent": "MatrixPortal/1.0 (CircuitPython)"}
+
     def __init__(self, ssid, password, timezone_offset=0, debug=False):
         self.ssid = ssid
         self.password = password
@@ -29,6 +32,12 @@ class NetworkHelper:
         self.debug = debug
         self.requests = None
         self._connected = False
+
+    def _headers(self, headers):
+        merged = dict(self._DEFAULT_HEADERS)
+        if headers:
+            merged.update(headers)
+        return merged
 
     def connect(self, retries=3):
         for attempt in range(retries):
@@ -68,10 +77,17 @@ class NetworkHelper:
         )
         socket.set_interface(self._esp)
 
+        # Bounded retries: a wrong SSID/password raises RuntimeError forever.
+        # Without a cap this loop would hang the boot indefinitely instead of
+        # letting connect() return False and fall back to offline modes.
+        attempts = 0
         while not self._esp.is_connected:
             try:
                 self._esp.connect_AP(self.ssid, self.password)
             except RuntimeError as e:
+                attempts += 1
+                if attempts >= 3:
+                    raise
                 print(f"ESP32 connect error: {e}, retrying...")
                 time.sleep(1)
 
@@ -99,7 +115,7 @@ class NetworkHelper:
             return None
         for attempt in range(retries):
             try:
-                resp = self.requests.get(url, headers=headers)
+                resp = self.requests.get(url, headers=self._headers(headers))
                 data = resp.json()
                 resp.close()
                 return data
@@ -126,7 +142,7 @@ class NetworkHelper:
             return None
         for attempt in range(retries):
             try:
-                resp = self.requests.get(url, headers=headers)
+                resp = self.requests.get(url, headers=self._headers(headers))
                 data = resp.content
                 resp.close()
                 return data
@@ -146,7 +162,7 @@ class NetworkHelper:
         if not self.requests:
             return False
         try:
-            resp = self.requests.get(url, headers=headers)
+            resp = self.requests.get(url, headers=self._headers(headers))
             data = resp.content
             resp.close()
             with open(filepath, "wb") as f:

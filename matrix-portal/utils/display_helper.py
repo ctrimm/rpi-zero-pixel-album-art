@@ -65,10 +65,17 @@ def make_text_label(text, color=0xFFFFFF, x=0, y=0, scale=1):
 
 
 def center_label(lbl, display_width=64, y=None):
-    """Horizontally center a label."""
+    """Horizontally center a label.
+
+    bounding_box is in unscaled glyph pixels, so multiply by the label's
+    scale to get the real on-screen width - otherwise scale>1 labels (the
+    clock time, weather temp, sports score, splash) end up pushed to the
+    right and clipped off the edge.
+    """
     if lbl is None:
         return
-    lbl.x = max(0, (display_width - lbl.bounding_box[2]) // 2)
+    width = lbl.bounding_box[2] * getattr(lbl, "scale", 1)
+    lbl.x = max(0, (display_width - width) // 2)
     if y is not None:
         lbl.y = y
 
