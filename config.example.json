@@ -4,7 +4,13 @@
     "client_secret": "your_spotify_client_secret_here",
     "redirect_uri": "http://127.0.0.1:8888/callback",
     "scope": "user-read-currently-playing user-read-playback-state",
-    "update_interval": 10
+    "update_interval": 10,
+    "poll_max_interval": 10,
+    "poll_paused_interval": 20,
+    "poll_idle_interval": 30,
+    "poll_transition_interval": 2,
+    "poll_transition_window": 12,
+    "comment": "Adaptive polling (seconds): poll_max_interval = mid-song ceiling that catches manual skips; paused/idle slow down the poll rate; near a track's predicted end it polls every poll_transition_interval starting poll_transition_window seconds early so new album art appears almost instantly."
   },
   "display": {
     "rows": 64,

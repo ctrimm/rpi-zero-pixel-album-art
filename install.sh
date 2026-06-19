@@ -50,23 +50,32 @@ apt-get install -y \
 echo ""
 echo "🔧 Configuring Raspberry Pi for LED matrix..."
 
+# Pi OS Bookworm (2023+) moved the boot config to /boot/firmware/.
+# Detect the correct location so these tweaks don't silently land in a file
+# that the bootloader never reads.
+BOOT_DIR="/boot/firmware"
+[ -f "$BOOT_DIR/config.txt" ] || BOOT_DIR="/boot"
+CONFIG_TXT="$BOOT_DIR/config.txt"
+CMDLINE_TXT="$BOOT_DIR/cmdline.txt"
+echo "✓ Using boot config at $CONFIG_TXT"
+
 # Disable audio (conflicts with LED matrix PWM)
-if ! grep -q "dtparam=audio=off" /boot/config.txt; then
-    echo "dtparam=audio=off" >> /boot/config.txt
+if ! grep -q "dtparam=audio=off" "$CONFIG_TXT"; then
+    echo "dtparam=audio=off" >> "$CONFIG_TXT"
     echo "✓ Disabled onboard audio"
 fi
 
 # Disable Bluetooth (optional, for stability)
-if ! grep -q "dtoverlay=disable-bt" /boot/config.txt; then
-    echo "dtoverlay=disable-bt" >> /boot/config.txt
+if ! grep -q "dtoverlay=disable-bt" "$CONFIG_TXT"; then
+    echo "dtoverlay=disable-bt" >> "$CONFIG_TXT"
     echo "✓ Disabled Bluetooth"
     systemctl disable hciuart 2>/dev/null || true
 fi
 
 # For Pi 4: Isolate CPU core for LED refresh (optional but recommended)
 if grep -q "Raspberry Pi 4" /proc/cpuinfo; then
-    if ! grep -q "isolcpus=3" /boot/cmdline.txt; then
-        sed -i '$ s/$/ isolcpus=3/' /boot/cmdline.txt
+    if ! grep -q "isolcpus=3" "$CMDLINE_TXT"; then
+        sed -i '$ s/$/ isolcpus=3/' "$CMDLINE_TXT"
         echo "✓ Isolated CPU core 3 for LED matrix (Pi 4)"
     fi
 fi

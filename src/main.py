@@ -53,30 +53,51 @@ class SpotifyDisplayApp:
         self.running = False
         self.mode_thread = None
         self.manual_mode = False  # Track if user manually selected a mode
-        self.manual_mode_time = 0  # Time of last manual mode change
+        self.using_simulator = False  # True when running the dev GUI simulator
+        self.start_time = time.time()  # For uptime reporting
 
     def _setup_logging(self):
         """Configure application logging"""
         log_config = self.config.get('logging', {})
-        log_level = getattr(logging, log_config.get('level', 'INFO'))
+        log_level = getattr(logging, log_config.get('level', 'INFO'), logging.INFO)
         log_file = log_config.get('file', '/var/log/spotify-display.log')
 
-        # Create log directory if it doesn't exist
-        log_dir = os.path.dirname(log_file)
-        if log_dir and not os.path.exists(log_dir):
-            try:
-                os.makedirs(log_dir)
-            except:
-                log_file = 'spotify-display.log'  # Fallback to current dir
+        # Always log to stdout (captured by systemd/journald).
+        handlers = [logging.StreamHandler(sys.stdout)]
+
+        # Add a file handler only if the path is actually writable. The default
+        # /var/log location is not writable by a non-root service user, and the
+        # directory already exists, so we cannot rely on the makedirs fallback -
+        # creating the FileHandler would raise PermissionError and crash the app
+        # before logging is even initialised. Fall back to the working directory,
+        # and if that also fails, log to stdout only.
+        file_handler = self._make_file_handler(log_file)
+        if file_handler is None and os.path.basename(log_file) != 'spotify-display.log':
+            file_handler = self._make_file_handler('spotify-display.log')
+        if file_handler is not None:
+            handlers.insert(0, file_handler)
 
         logging.basicConfig(
             level=log_level,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_file),
-                logging.StreamHandler(sys.stdout)
-            ]
+            handlers=handlers
         )
+
+        if file_handler is None:
+            logging.getLogger(__name__).warning(
+                "File logging disabled (no writable log file at %s); using stdout only",
+                log_file
+            )
+
+    def _make_file_handler(self, log_file):
+        """Create a logging FileHandler, or return None if it isn't writable."""
+        try:
+            log_dir = os.path.dirname(log_file)
+            if log_dir and not os.path.exists(log_dir):
+                os.makedirs(log_dir, exist_ok=True)
+            return logging.FileHandler(log_file)
+        except OSError:
+            return None
 
     def initialize(self):
         """Initialize all components"""
@@ -89,8 +110,10 @@ class SpotifyDisplayApp:
             if os.environ.get('LED_SIMULATOR', '').lower() in ('1', 'true', 'yes'):
                 from led_simulator import SimulatedLEDDisplay
                 self.display = SimulatedLEDDisplay(self.config['display'])
+                self.using_simulator = True
             else:
                 self.display = LEDDisplay(self.config['display'])
+                self.using_simulator = False
 
             # Initialize Spotify client
             self.logger.info("Initializing Spotify client...")
@@ -151,9 +174,10 @@ class SpotifyDisplayApp:
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
-        # Check if we're using the simulator (needs main thread for tkinter on macOS)
-        from led_simulator import SimulatedLEDDisplay
-        if isinstance(self.display, SimulatedLEDDisplay):
+        # Check if we're using the simulator (needs main thread for tkinter on macOS).
+        # Use a flag set during initialize() rather than importing led_simulator here,
+        # because importing it pulls in tkinter which is typically absent on a headless Pi.
+        if self.using_simulator:
             self.logger.info("🖥️  Starting simulator GUI on main thread (required for macOS)")
             # Run tkinter mainloop on main thread (blocking)
             # This is required for macOS - background threads run the app logic
@@ -201,6 +225,12 @@ class SpotifyDisplayApp:
                 else:
                     self.logger.warning(f"Unknown mode: {self.current_mode}")
                     time.sleep(5)
+
+                # Floor sleep to avoid a 100% CPU busy-wait: the screensaver
+                # modes deliberately return without sleeping when they skip a
+                # frame, so without this the loop would spin as fast as possible
+                # (pegging a core on a Pi Zero). 5ms still allows >100 FPS.
+                time.sleep(0.005)
 
             except Exception as e:
                 self.logger.error(f"Error in display loop: {e}", exc_info=True)
@@ -278,7 +308,6 @@ class SpotifyDisplayApp:
             # Set manual mode flag to prevent auto-switching from overriding
             if manual:
                 self.manual_mode = True
-                self.manual_mode_time = time.time()
                 self.logger.debug(f"Manual mode activated for {mode_name}")
 
             # Clear display for new mode
@@ -299,7 +328,7 @@ class SpotifyDisplayApp:
             'brightness': self.config['display']['brightness'],
             'spotify_playing': self.spotify.is_playing() if self.spotify else False,
             'current_track': spotify_status,
-            'uptime': time.time()  # Could track actual uptime
+            'uptime': time.time() - self.start_time
         }
 
     def set_brightness(self, brightness):
