@@ -59,25 +59,45 @@ class SpotifyDisplayApp:
     def _setup_logging(self):
         """Configure application logging"""
         log_config = self.config.get('logging', {})
-        log_level = getattr(logging, log_config.get('level', 'INFO'))
+        log_level = getattr(logging, log_config.get('level', 'INFO'), logging.INFO)
         log_file = log_config.get('file', '/var/log/spotify-display.log')
 
-        # Create log directory if it doesn't exist
-        log_dir = os.path.dirname(log_file)
-        if log_dir and not os.path.exists(log_dir):
-            try:
-                os.makedirs(log_dir)
-            except:
-                log_file = 'spotify-display.log'  # Fallback to current dir
+        # Always log to stdout (captured by systemd/journald).
+        handlers = [logging.StreamHandler(sys.stdout)]
+
+        # Add a file handler only if the path is actually writable. The default
+        # /var/log location is not writable by a non-root service user, and the
+        # directory already exists, so we cannot rely on the makedirs fallback -
+        # creating the FileHandler would raise PermissionError and crash the app
+        # before logging is even initialised. Fall back to the working directory,
+        # and if that also fails, log to stdout only.
+        file_handler = self._make_file_handler(log_file)
+        if file_handler is None and os.path.basename(log_file) != 'spotify-display.log':
+            file_handler = self._make_file_handler('spotify-display.log')
+        if file_handler is not None:
+            handlers.insert(0, file_handler)
 
         logging.basicConfig(
             level=log_level,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_file),
-                logging.StreamHandler(sys.stdout)
-            ]
+            handlers=handlers
         )
+
+        if file_handler is None:
+            logging.getLogger(__name__).warning(
+                "File logging disabled (no writable log file at %s); using stdout only",
+                log_file
+            )
+
+    def _make_file_handler(self, log_file):
+        """Create a logging FileHandler, or return None if it isn't writable."""
+        try:
+            log_dir = os.path.dirname(log_file)
+            if log_dir and not os.path.exists(log_dir):
+                os.makedirs(log_dir, exist_ok=True)
+            return logging.FileHandler(log_file)
+        except OSError:
+            return None
 
     def initialize(self):
         """Initialize all components"""
@@ -205,6 +225,12 @@ class SpotifyDisplayApp:
                 else:
                     self.logger.warning(f"Unknown mode: {self.current_mode}")
                     time.sleep(5)
+
+                # Floor sleep to avoid a 100% CPU busy-wait: the screensaver
+                # modes deliberately return without sleeping when they skip a
+                # frame, so without this the loop would spin as fast as possible
+                # (pegging a core on a Pi Zero). 5ms still allows >100 FPS.
+                time.sleep(0.005)
 
             except Exception as e:
                 self.logger.error(f"Error in display loop: {e}", exc_info=True)
