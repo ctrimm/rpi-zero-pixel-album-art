@@ -34,8 +34,6 @@ class MusicMode:
 
         self.current_track_id = None
         self.last_displayed_track_id = None  # Track what's currently displayed
-        self.last_update = 0
-        self.update_interval = 5  # Check every 5 seconds
         self.first_update = True  # Flag for first update
 
         # Display settings
@@ -47,17 +45,10 @@ class MusicMode:
     def update(self):
         """Update music display"""
         try:
-            # Rate limiting (but skip on first update)
-            current_time = time.time()
-            if not self.first_update and current_time - self.last_update < self.update_interval:
-                time.sleep(1)
-                return
-
-            self.last_update = current_time
-
-            # Get current track
-            # spotify_client now returns cached track during rate limiting,
-            # so we always get useful data (either fresh or cached)
+            # Ask every loop (~1s). The Spotify client owns the actual API
+            # cadence via adaptive polling and returns cached data between
+            # polls, so this is cheap and lets us pick up a track change within
+            # a second of the client detecting it.
             track_info = self.spotify.get_current_track(force=self.first_update)
             self.first_update = False  # Clear flag after first update
 

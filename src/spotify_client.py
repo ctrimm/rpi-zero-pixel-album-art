@@ -28,6 +28,23 @@ class SpotifyClient:
         self.current_track_id = None
         self.last_update = 0
         self.update_interval = config.get('update_interval', 10)
+
+        # Adaptive polling.
+        # Spotify's Web API has no push/webhook for the currently-playing track,
+        # so we have to poll - but we can be smart about *when*. Each poll returns
+        # progress_ms/duration_ms, so we can predict when the current track will
+        # end naturally and poll tightly only around that transition, slow right
+        # down while paused or idle, and keep a modest ceiling mid-track to still
+        # catch manual skips. All intervals are seconds and overridable via config.
+        self.poll_max_interval = config.get('poll_max_interval', self.update_interval)  # mid-song skip-detection ceiling
+        self.poll_paused_interval = config.get('poll_paused_interval', 20)              # while paused
+        self.poll_idle_interval = config.get('poll_idle_interval', 30)                  # while nothing is playing
+        self.poll_transition_interval = config.get('poll_transition_interval', 2)       # tight poll near a track change
+        self.poll_transition_window = config.get('poll_transition_window', 12)          # start tight polling this long before predicted end
+        self.poll_error_interval = config.get('poll_error_interval', 15)               # back off after API errors
+        self.poll_min_interval = config.get('poll_min_interval', 1)                    # never poll faster than this
+        self.next_poll_time = 0  # wall-clock time when the next API poll is allowed
+
         self.cache_path = Path.home() / '.cache' / 'spotify-display'
 
         # Cache the last known track info
@@ -74,14 +91,15 @@ class SpotifyClient:
         Returns:
             dict: Track information if playing
             None: If nothing is playing (from Spotify API)
-            cached_track_info: If rate limiting prevents new query
+            cached_track_info: If adaptive polling prevents a new query
         """
         try:
-            # Check if we should update (rate limiting)
+            # Adaptive rate limiting: only hit the API when the schedule says so.
             current_time = time.time()
-            if not force and current_time - self.last_update < self.update_interval:
-                # Return cached track info instead of None during rate limiting
-                # This allows the caller to know we're rate limited, not that music stopped
+            if not force and current_time < self.next_poll_time:
+                # Return cached track info instead of None while we're between
+                # polls, so the caller can tell "no new data yet" apart from
+                # "music stopped".
                 return self.cached_track_info
 
             self.last_update = current_time
@@ -93,6 +111,7 @@ class SpotifyClient:
                 # No playback device active - clear cache and return None
                 self.cached_track_info = None
                 self.current_track_id = None
+                self._schedule_next_poll(None)
                 return None
 
             # IMPORTANT: Don't clear cache when paused!
@@ -100,6 +119,7 @@ class SpotifyClient:
             track = current.get('item')
             if not track:
                 self.cached_track_info = None
+                self._schedule_next_poll(None)
                 return None
 
             is_playing = current.get('is_playing', False)
@@ -124,12 +144,55 @@ class SpotifyClient:
             # Always update cache with latest info
             self.cached_track_info = track_info
 
+            # Decide when to poll next based on this track's state
+            self._schedule_next_poll(track_info)
+
             return track_info
 
         except Exception as e:
             self.logger.error(f"Error getting current track: {e}")
-            # On error, return cached info if available
+            # Back off before retrying so a failing API doesn't get hammered,
+            # and return cached info if available.
+            self._schedule_next_poll(None, error=True)
             return self.cached_track_info
+
+    def _schedule_next_poll(self, track_info, error=False):
+        """
+        Compute the wall-clock time of the next allowed API poll.
+
+        The goal is to poll as little as possible while keeping the album art
+        responsive: tight around a track change, relaxed while paused/idle, and
+        capped mid-track so a manual skip still updates within a bounded delay.
+
+        Args:
+            track_info: The track info just fetched (or None if nothing playing)
+            error: True if the last poll raised, so we back off before retrying
+        """
+        now = time.time()
+
+        if error:
+            delay = self.poll_error_interval
+        elif not track_info:
+            # Nothing playing - no urgency, check back occasionally.
+            delay = self.poll_idle_interval
+        elif not track_info.get('is_playing'):
+            # Paused - progress is frozen, so there's no transition to predict.
+            delay = self.poll_paused_interval
+        else:
+            duration = track_info.get('duration_ms') or 0
+            progress = track_info.get('progress_ms') or 0
+            remaining = max(0.0, (duration - progress) / 1000.0)
+
+            if remaining <= self.poll_transition_window:
+                # Near (or past) the end - poll tightly to catch the new track.
+                delay = self.poll_transition_interval
+            else:
+                # Sleep until just before the predicted end, but never longer
+                # than the ceiling so a manual skip is still caught reasonably.
+                delay = min(self.poll_max_interval, remaining - self.poll_transition_window)
+
+        delay = max(self.poll_min_interval, delay)
+        self.next_poll_time = now + delay
 
     def _get_best_album_art(self, images):
         """
