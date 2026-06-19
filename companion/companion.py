@@ -182,12 +182,14 @@ class SpotifyManager:
                         need_art = False
                         with self._lock:
                             self._current_track = {
-                                "is_playing": True,
-                                "track_id":   track_id,
-                                "title":      item.get("name", ""),
-                                "artist":     artist,
-                                "album":      item.get("album", {}).get("name", ""),
-                                "art_url":    art_url,
+                                "is_playing":  True,
+                                "track_id":    track_id,
+                                "title":       item.get("name", ""),
+                                "artist":      artist,
+                                "album":       item.get("album", {}).get("name", ""),
+                                "art_url":     art_url,
+                                "progress_ms": result.get("progress_ms", 0) or 0,
+                                "duration_ms": item.get("duration_ms", 0) or 0,
                             }
                             # Decide under the lock, fetch outside it
                             if track_id and track_id != self._current_art_id:
@@ -527,15 +529,54 @@ def run_auth():
     spotify_mgr.authenticate()
 
 
+def advertise_mdns(port):
+    """Advertise the companion over mDNS as 'matrixportal-companion.local' so the
+    device can use a stable hostname instead of a hardcoded IP. Best-effort:
+    requires the optional 'zeroconf' package and an mDNS-capable client.
+    Returns the Zeroconf instance (keep a reference) or None."""
+    try:
+        import socket
+        from zeroconf import Zeroconf, ServiceInfo
+    except ImportError:
+        print("(mDNS advertising disabled — 'pip install zeroconf' to enable)")
+        return None
+    try:
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+    except Exception:
+        local_ip = "127.0.0.1"
+    try:
+        zc = Zeroconf()
+        info = ServiceInfo(
+            "_http._tcp.local.",
+            "matrixportal-companion._http._tcp.local.",
+            addresses=[__import__("socket").inet_aton(local_ip)],
+            port=port,
+            properties={"path": "/"},
+            server="matrixportal-companion.local.",
+        )
+        zc.register_service(info)
+        print(f"mDNS: advertising matrixportal-companion.local → {local_ip}:{port}")
+        return zc
+    except Exception as e:
+        print(f"(mDNS advertising failed: {e})")
+        return None
+
+
 def run_server(host, port):
     # Start Spotify background polling
     t = threading.Thread(target=spotify_mgr.poll, daemon=True)
     t.start()
 
+    # Advertise over mDNS (best-effort; keep a reference alive)
+    _zc = advertise_mdns(port)  # noqa: F841
+
     print(f"\n{'='*55}")
     print(f"  Matrix Portal Companion")
     print(f"  Web control panel → http://{host}:{port}/")
     print(f"  Matrix Portal URL → http://<your-ip>:{port}/")
+    if _zc is not None:
+        print(f"           or try → http://matrixportal-companion.local:{port}/")
     print(f"{'='*55}\n")
 
     app.secret_key = config["web"].get("secret_key", "dev_secret")

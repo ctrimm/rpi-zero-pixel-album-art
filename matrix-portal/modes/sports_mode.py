@@ -4,6 +4,9 @@ import time
 import gc
 
 from utils.display_helper import make_text_label, center_label, COLORS, ScrollingLabel
+from utils import storage_helper
+
+SPORTS_CACHE = "/cache_sports.json"
 
 # ESPN API — no auth required
 ESPN_URL = "https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard"
@@ -83,6 +86,14 @@ class SportsMode:
         self.display.root_group = self._group
         self._last_update = 0
 
+        # Show last-good game immediately (before the first network fetch)
+        cached = storage_helper.load_json(SPORTS_CACHE)
+        if cached:
+            try:
+                self._render_game(cached)
+            except Exception as e:
+                print(f"Sports cache render failed: {e}")
+
     def on_exit(self):
         self._group = None
         self._league_label = None
@@ -104,8 +115,9 @@ class SportsMode:
     def _fetch_and_render(self):
         if self.companion_url:
             data = self.network.get_json(f"{self.companion_url}/api/matrix/sports")
-            if data:
+            if data and not data.get("error"):
                 self._render_game(data)
+                storage_helper.save_json(SPORTS_CACHE, data)
                 return
 
         sport, league_path = _sport_for_league(self.league)
@@ -120,6 +132,7 @@ class SportsMode:
         game = self._find_team_game(data)
         if game:
             self._render_game(game)
+            storage_helper.save_json(SPORTS_CACHE, game)
         else:
             self._set_status("No game today")
 

@@ -70,6 +70,11 @@ WEATHER_UNITS  = os.getenv("WEATHER_UNITS", "imperial")
 ESPN_LEAGUE    = os.getenv("ESPN_LEAGUE", "NBA")
 ESPN_TEAM      = os.getenv("ESPN_TEAM", "LAL")
 
+BRIGHTNESS_SCHEDULE = os.getenv("BRIGHTNESS_SCHEDULE", "")
+ENABLE_WATCHDOG     = int(os.getenv("ENABLE_WATCHDOG", 1))
+
+VALID_MODES = ("music", "weather", "sports", "clock", "screensaver")
+
 set_display_brightness(BRIGHTNESS)
 
 # ── Splash screen ─────────────────────────────────────────────────────────────
@@ -146,7 +151,67 @@ def scheduled_mode(schedule, current_hour, current_min):
     return best
 
 
+def parse_brightness_schedule(schedule_str):
+    """Parse "HH:MM=PERCENT,HH:MM=PERCENT" into sorted (hour, min, percent)."""
+    entries = []
+    if not schedule_str:
+        return entries
+    for part in schedule_str.split(","):
+        part = part.strip()
+        if "=" not in part:
+            continue
+        time_str, value = part.split("=", 1)
+        time_str = time_str.strip()
+        if ":" in time_str:
+            try:
+                h, m = time_str.split(":")
+                entries.append((int(h), int(m), int(value.strip())))
+            except ValueError:
+                pass
+    return sorted(entries, key=lambda e: e[0] * 60 + e[1])
+
+
+def scheduled_brightness(schedule, current_hour, current_min):
+    """Return the brightness percent that should be active at the given time."""
+    if not schedule:
+        return None
+    current_minutes = current_hour * 60 + current_min
+    best = None
+    for h, m, value in schedule:
+        if h * 60 + m <= current_minutes:
+            best = value
+    if best is None:
+        best = schedule[-1][2]  # wrap to previous day's last entry
+    return best
+
+
+def validate_settings():
+    """Return a list of human-readable config problems (empty == all good)."""
+    warnings = []
+    if not WIFI_SSID:
+        warnings.append("No WiFi SSID")
+    if DEFAULT_MODE not in VALID_MODES:
+        warnings.append("Bad DEFAULT_MODE")
+    if DEFAULT_MODE == "music" and not COMPANION_URL and not SPOTIFY_REFRESH_TOKEN:
+        warnings.append("Music needs companion or token")
+    if DEFAULT_MODE == "weather" and not OWM_API_KEY and not COMPANION_URL:
+        warnings.append("Weather needs API key")
+    return warnings
+
+
 SCHEDULE = parse_schedule(MODE_SCHEDULE)
+BRIGHT_SCHEDULE = parse_brightness_schedule(BRIGHTNESS_SCHEDULE)
+
+# Surface configuration problems on the panel (and serial) at boot.
+_setting_warnings = validate_settings()
+if _setting_warnings:
+    print("Settings warnings:", _setting_warnings)
+    line1.text = "Check"
+    center_label(line1, y=22)
+    for _w in _setting_warnings:
+        line2.text = _w[:10]
+        center_label(line2, y=40)
+        time.sleep(1.5)
 
 # ── Mode initialisation (lazy — only construct the active mode) ───────────────
 from modes.clock_mode import ClockMode
@@ -207,6 +272,83 @@ _register_modes()
 gc.collect()
 print(f"Free RAM after mode registration: {gc.mem_free()} bytes")
 
+# ── Hardware watchdog ─────────────────────────────────────────────────────────
+# Auto-reboot if the firmware hangs (e.g. a wedged network stack). The network
+# helper feeds it during requests so legitimate I/O isn't cut short.
+_watchdog = None
+if ENABLE_WATCHDOG:
+    try:
+        import microcontroller
+        from watchdog import WatchDogMode
+        microcontroller.watchdog.timeout = 16  # seconds (SAMD51 max ~16.4)
+        microcontroller.watchdog.mode = WatchDogMode.RESET
+        _watchdog = microcontroller.watchdog
+        print("Watchdog enabled (16s)")
+    except Exception as e:
+        print(f"Watchdog unavailable: {e}")
+
+
+def feed_watchdog():
+    if _watchdog is not None:
+        try:
+            _watchdog.feed()
+        except Exception:
+            pass
+
+
+# ── Hardware buttons (UP = next mode, DOWN = cycle brightness) ─────────────────
+import digitalio
+
+def _make_button(pin):
+    try:
+        b = digitalio.DigitalInOut(pin)
+        b.switch_to_input(pull=digitalio.Pull.UP)
+        return b
+    except Exception as e:
+        print(f"Button init failed ({pin}): {e}")
+        return None
+
+btn_up = _make_button(board.BUTTON_UP)
+btn_down = _make_button(board.BUTTON_DOWN)
+
+_btn_up_prev = True       # pulled-up: True = released, False = pressed
+_btn_down_prev = True
+_btn_last_press = 0
+_BTN_DEBOUNCE = 0.3       # seconds
+
+BRIGHTNESS_LEVELS = [10, 25, 50, 75, 100]
+current_brightness = BRIGHTNESS
+
+
+def _pressed(btn, prev):
+    """Return (is_fresh_press, new_prev) for an active-low button."""
+    if btn is None:
+        return (False, prev)
+    val = btn.value
+    fresh = (prev and not val)  # high → low transition
+    return (fresh, val)
+
+
+def cycle_mode():
+    """Switch to the next available mode (button UP)."""
+    order = [m for m in VALID_MODES if m in _mode_constructors]
+    if not order:
+        return
+    try:
+        idx = order.index(current_mode_name)
+    except ValueError:
+        idx = -1
+    switch_mode(order[(idx + 1) % len(order)], manual=True)
+
+
+def cycle_brightness():
+    """Step to the next brightness level (button DOWN)."""
+    global current_brightness
+    nxt = next((lvl for lvl in BRIGHTNESS_LEVELS if lvl > current_brightness), BRIGHTNESS_LEVELS[0])
+    current_brightness = nxt
+    set_display_brightness(nxt)
+    print(f"Brightness → {nxt}%")
+
 # ── Main loop ─────────────────────────────────────────────────────────────────
 current_mode_name = DEFAULT_MODE
 current_mode = None
@@ -220,6 +362,11 @@ manual_override_until = 0
 # Time-sync refresh (every 6 hours)
 last_time_sync = time.monotonic()
 TIME_SYNC_INTERVAL = 6 * 3600
+
+# WiFi link health check
+last_wifi_check = 0
+WIFI_CHECK_INTERVAL = 30  # seconds
+last_scheduled_brightness = None
 
 def switch_mode(name, manual=False):
     global current_mode_name, current_mode, manual_override, manual_override_until
@@ -249,13 +396,37 @@ print(f"Started — mode: {current_mode_name}  RAM: {gc.mem_free()} bytes")
 
 while True:
     try:
+        feed_watchdog()
         now = time.monotonic()
         t = rtc.RTC().datetime
+
+        # ── Hardware buttons ──────────────────────────────────────────────────
+        up_press, _btn_up_prev = _pressed(btn_up, _btn_up_prev)
+        down_press, _btn_down_prev = _pressed(btn_down, _btn_down_prev)
+        if (up_press or down_press) and (now - _btn_last_press) >= _BTN_DEBOUNCE:
+            _btn_last_press = now
+            if up_press:
+                cycle_mode()
+            else:
+                cycle_brightness()
+
+        # ── WiFi link health (reconnect if it dropped) ────────────────────────
+        if WIFI_SSID and (now - last_wifi_check) >= WIFI_CHECK_INTERVAL:
+            last_wifi_check = now
+            connected = network.ensure_connected()
 
         # ── Periodic time sync ────────────────────────────────────────────────
         if connected and (now - last_time_sync) >= TIME_SYNC_INTERVAL:
             last_time_sync = now
             network.sync_time()
+
+        # ── Night dimming (brightness schedule) ───────────────────────────────
+        if BRIGHT_SCHEDULE:
+            sb = scheduled_brightness(BRIGHT_SCHEDULE, t.tm_hour, t.tm_min)
+            if sb is not None and sb != last_scheduled_brightness:
+                last_scheduled_brightness = sb
+                current_brightness = sb
+                set_display_brightness(sb)
 
         # ── Manual override expiry ────────────────────────────────────────────
         if manual_override and now >= manual_override_until:
@@ -269,6 +440,7 @@ while True:
                 if status:
                     new_brightness = status.get("brightness")
                     if new_brightness is not None:
+                        current_brightness = int(new_brightness)
                         set_display_brightness(new_brightness)
 
                     new_mode = status.get("mode")

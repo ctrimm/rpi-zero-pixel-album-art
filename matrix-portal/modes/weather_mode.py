@@ -4,6 +4,9 @@ import time
 import gc
 
 from utils.display_helper import make_text_label, center_label, COLORS, ScrollingLabel
+from utils import storage_helper
+
+WEATHER_CACHE = "/cache_weather.json"
 
 OWM_CURRENT_URL = (
     "http://api.openweathermap.org/data/2.5/weather"
@@ -104,6 +107,14 @@ class WeatherMode:
         self.display.root_group = self._group
         self._last_update = 0  # force immediate fetch
 
+        # Show last-good weather immediately (before the first network fetch)
+        cached = storage_helper.load_json(WEATHER_CACHE)
+        if cached:
+            try:
+                self._render(cached)
+            except Exception as e:
+                print(f"Weather cache render failed: {e}")
+
     def on_exit(self):
         self._group = None
         self._temp_label = None
@@ -125,8 +136,9 @@ class WeatherMode:
     def _fetch_and_render(self):
         if self.companion_url:
             data = self.network.get_json(f"{self.companion_url}/api/matrix/weather")
-            if data:
+            if data and not data.get("error"):
                 self._render(data)
+                storage_helper.save_json(WEATHER_CACHE, data)
                 return
 
         if not self.api_key:
@@ -160,10 +172,9 @@ class WeatherMode:
                     })
 
         if current:
-            self._render({
-                "current": current,
-                "forecast": forecast_days,
-            })
+            payload = {"current": current, "forecast": forecast_days}
+            self._render(payload)
+            storage_helper.save_json(WEATHER_CACHE, payload)
 
     def _render(self, data):
         unit_sym = UNIT_SYMBOL.get(self.units, "F")

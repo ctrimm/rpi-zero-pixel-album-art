@@ -3,6 +3,24 @@ import time
 import rtc
 
 try:
+    import microcontroller
+except ImportError:
+    microcontroller = None
+
+
+def _feed_watchdog():
+    """Pet the hardware watchdog if one is running, so long-but-legitimate
+    network work doesn't trip a reset. A genuinely hung request never reaches
+    the next feed, which is exactly when we *want* the watchdog to fire."""
+    if microcontroller is not None:
+        try:
+            if microcontroller.watchdog is not None:
+                microcontroller.watchdog.feed()
+        except Exception:
+            pass
+
+
+try:
     import wifi
     import socketpool
     import ssl
@@ -172,6 +190,7 @@ class NetworkHelper:
             return None
         for attempt in range(retries):
             try:
+                _feed_watchdog()
                 resp = self.requests.get(url, headers=self._headers(headers))
                 data = resp.json()
                 resp.close()
@@ -199,6 +218,7 @@ class NetworkHelper:
             return None
         for attempt in range(retries):
             try:
+                _feed_watchdog()
                 resp = self.requests.get(url, headers=self._headers(headers))
                 data = resp.content
                 resp.close()
@@ -219,6 +239,7 @@ class NetworkHelper:
         if not self.requests:
             return False
         try:
+            _feed_watchdog()
             resp = self.requests.get(url, headers=self._headers(headers))
             data = resp.content
             resp.close()
@@ -232,3 +253,23 @@ class NetworkHelper:
     @property
     def connected(self):
         return self._connected
+
+    def is_connected(self):
+        """Live check of the actual radio link (not just the boot-time flag)."""
+        try:
+            if _NATIVE_WIFI:
+                import wifi
+                return bool(wifi.radio.connected)
+            return bool(self._esp.is_connected)
+        except Exception:
+            return False
+
+    def ensure_connected(self):
+        """Reconnect if the link has dropped since boot. Returns current state."""
+        if self.is_connected():
+            self._connected = True
+            return True
+        print("WiFi link lost — reconnecting…")
+        ok = self.connect()
+        self._connected = ok
+        return ok

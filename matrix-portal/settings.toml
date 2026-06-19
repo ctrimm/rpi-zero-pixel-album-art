@@ -38,3 +38,13 @@ SCREENSAVER_TYPE = "both"
 # Schedule: comma-separated list of "HH:MM=mode" entries
 # Example: "07:00=clock,09:00=music,22:00=screensaver"
 MODE_SCHEDULE = ""
+
+# Brightness schedule: comma-separated "HH:MM=PERCENT" entries (night dimming).
+# Example: "07:00=60,22:00=15" → 60% during the day, 15% after 10pm.
+# Leave empty to use a fixed BRIGHTNESS.
+BRIGHTNESS_SCHEDULE = ""
+
+# Hardware watchdog: reboot the board automatically if the firmware hangs.
+# 1 = enabled (recommended for an always-on display), 0 = disabled.
+ENABLE_WATCHDOG = 1
+

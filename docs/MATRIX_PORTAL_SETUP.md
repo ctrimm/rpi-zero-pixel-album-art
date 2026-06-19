@@ -48,7 +48,25 @@
 Download the **CircuitPython 8.x library bundle** from  
 [circuitpython.org/libraries](https://circuitpython.org/libraries)
 
-Copy these folders/files from the bundle into `CIRCUITPY/lib/`:
+### Easiest: use `circup` (recommended)
+
+`circup` installs exactly the right library versions for your board with one
+command — far less error-prone than copying folders from the bundle by hand:
+
+```bash
+pip3 install circup
+# With the board plugged in (mounted as CIRCUITPY):
+circup install adafruit_display_text adafruit_imageload adafruit_esp32spi \
+               adafruit_requests adafruit_datetime
+```
+
+To update everything later: `circup update`.
+
+### Manual alternative
+
+If you'd rather not use `circup`, copy these from the
+[CircuitPython 8.x library bundle](https://circuitpython.org/libraries) into
+`CIRCUITPY/lib/`:
 
 ```
 adafruit_display_text/
@@ -56,7 +74,6 @@ adafruit_imageload/
 adafruit_esp32spi/
 adafruit_requests.mpy
 adafruit_datetime.mpy
-adafruit_matrixportal/      (optional, not directly used but handy)
 ```
 
 ---
@@ -69,7 +86,7 @@ Copy the contents of `matrix-portal/` from this repo onto your `CIRCUITPY` drive
 CIRCUITPY/
 ├── boot.py
 ├── code.py
-├── settings.toml          ← rename from settings.toml and fill in your values
+├── settings.toml          ← fill in your values
 ├── modes/
 │   ├── clock_mode.py
 │   ├── music_mode.py
@@ -78,7 +95,8 @@ CIRCUITPY/
 │   └── screensaver_mode.py
 └── utils/
     ├── display_helper.py
-    └── network_helper.py
+    ├── network_helper.py
+    └── storage_helper.py
 ```
 
 ---
@@ -112,9 +130,22 @@ COMPANION_URL = "http://192.168.1.100:5001"
 TIMEZONE_OFFSET = -6              # hours from UTC (-5=EST, -6=CST, -7=MST, -8=PST)
 SCREENSAVER_TYPE = "both"         # pipes, dvd, or both
 
-# Optional schedule — comment out to disable
+# Optional mode schedule — comment out to disable
 # MODE_SCHEDULE = "07:00=clock,09:00=music,22:30=screensaver"
+
+# Optional night dimming — bright by day, dim after 10pm
+# BRIGHTNESS_SCHEDULE = "07:00=60,22:00=15"
+
+ENABLE_WATCHDOG = 1               # auto-reboot if the firmware hangs (1=on, 0=off)
 ```
+
+### Notes on the newer options
+
+- **`BRIGHTNESS_SCHEDULE`** — `HH:MM=PERCENT` pairs. The panel dims/brightens at
+  each boundary; you can still nudge brightness with the DOWN button or the web
+  UI in between, and it sticks until the next scheduled change.
+- **`ENABLE_WATCHDOG`** — a hardware watchdog reboots the board if it ever wedges
+  (e.g. a stuck network stack). Recommended for an always-on display.
 
 ---
 
@@ -157,6 +188,32 @@ python companion.py --port 5001
 
 Find your machine's local IP (`ifconfig` / `ipconfig`) and set `COMPANION_URL` in `settings.toml`.
 
+### Keep the companion running (auto-start on login/boot)
+
+So you don't have to start it by hand every time:
+
+```bash
+cd companion
+bash services/install_service.sh
+```
+
+This installs a **launchd agent** on macOS or a **systemd user service** on Linux
+that starts the companion automatically and restarts it if it crashes. (On Linux,
+`loginctl enable-linger $USER` keeps it running even when you're logged out.)
+
+### Optional: find the companion by name instead of IP (mDNS)
+
+If you `pip install zeroconf` in the companion's venv, it advertises itself as
+`matrixportal-companion.local`. You can then set:
+
+```toml
+COMPANION_URL = "http://matrixportal-companion.local:5001"
+```
+
+and never worry about your computer's IP changing. (mDNS resolution is reliable
+on the S3 board's native WiFi; on the M4's ESP32 co-processor it can be hit or
+miss — if music art stops working, fall back to the numeric IP.)
+
 Open **http://localhost:5001** in your browser for the web control panel.
 
 ---
@@ -181,6 +238,40 @@ Open **http://localhost:5001** in your browser for the web control panel.
 | `screensaver` | Pipes and/or DVD logo. Works fully offline. |
 
 Switch modes from the web control panel at `http://<companion-ip>:5001/`.
+
+The **music** screen also shows a now-playing progress bar along the bottom and
+keeps the scrolling artist/track readable with a dim band behind the text.
+
+---
+
+## On-device controls (buttons)
+
+No phone needed — the two buttons on the Matrix Portal work standalone:
+
+| Button | Action |
+|---|---|
+| **UP** | Cycle to the next mode (music → weather → sports → clock → screensaver) |
+| **DOWN** | Step brightness (10 → 25 → 50 → 75 → 100 → 10 %) |
+
+> Holding **UP** while plugging in USB still drops to file-editing mode (the drive
+> becomes writable from your computer) — that's handled by `boot.py` before the
+> firmware starts, so it doesn't conflict with the in-app button actions.
+
+---
+
+## Reliability (always-on display)
+
+This build is meant to run unattended on a wall:
+
+- **Watchdog** — if the firmware ever hangs, the board auto-reboots (toggle with
+  `ENABLE_WATCHDOG`).
+- **WiFi auto-reconnect** — if your network blips, it reconnects on its own
+  instead of silently going dark.
+- **Last-good caching** — the most recent album art, weather, and scores are
+  saved to flash, so after a reboot or power cut the panel shows real content
+  immediately instead of placeholders while it reconnects.
+- **Robust time sync** — falls back to a second time source if the primary is
+  down, so the clock stays correct.
 
 ---
 

@@ -1,0 +1,15 @@
+[Unit]
+Description=Matrix Portal Companion
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust WorkingDirectory/ExecStart if your checkout lives elsewhere.
+WorkingDirectory=%h/rpi-zero-pixel-album-art/companion
+ExecStart=%h/rpi-zero-pixel-album-art/companion/venv/bin/python companion.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
