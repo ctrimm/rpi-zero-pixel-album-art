@@ -179,6 +179,7 @@ class SpotifyManager:
                             art_url = images[0]["url"]
 
                         track_id = item.get("id", "")
+                        need_art = False
                         with self._lock:
                             self._current_track = {
                                 "is_playing": True,
@@ -188,9 +189,14 @@ class SpotifyManager:
                                 "album":      item.get("album", {}).get("name", ""),
                                 "art_url":    art_url,
                             }
-                            # Pre-fetch art if track changed
+                            # Decide under the lock, fetch outside it
                             if track_id and track_id != self._current_art_id:
-                                self._fetch_art(art_url, track_id)
+                                need_art = True
+                        # Download + resize art WITHOUT holding the lock, so
+                        # /api/matrix/track and album_art.bmp stay responsive
+                        # while a (slow) image download is in flight.
+                        if need_art:
+                            self._fetch_art(art_url, track_id)
                     else:
                         with self._lock:
                             self._current_track = {"is_playing": False}
@@ -199,7 +205,11 @@ class SpotifyManager:
             time.sleep(self._poll_interval)
 
     def _fetch_art(self, art_url, track_id):
-        """Download and resize album art to 64x64 256-color BMP. Caller holds lock."""
+        """Download and resize album art to a 64x64 256-color BMP.
+
+        Does the network + image work WITHOUT the lock, then takes the lock
+        only briefly to publish the result.
+        """
         if not art_url:
             return
         try:
@@ -209,8 +219,9 @@ class SpotifyManager:
             img = img.resize((64, 64), Image.LANCZOS)
             # Quantize to 256 colors for CircuitPython compatibility
             img = img.quantize(colors=256, method=Image.Quantize.MEDIANCUT)
-            self._current_art_img = img
-            self._current_art_id = track_id
+            with self._lock:
+                self._current_art_img = img
+                self._current_art_id = track_id
             print(f"[Spotify] Art ready for: {track_id}")
         except Exception as e:
             print(f"[Spotify] Art fetch failed: {e}")

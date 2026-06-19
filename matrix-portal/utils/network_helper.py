@@ -94,21 +94,78 @@ class NetworkHelper:
         self.requests = adafruit_requests.Session(socket, None)
 
     def sync_time(self):
-        """Sync RTC via worldtimeapi.org."""
+        """Sync the RTC, with a fallback so a single source being down
+        doesn't leave the clock wrong.
+
+        1. worldtimeapi.org (gives a UTC epoch directly)
+        2. The HTTP ``Date`` header of any response (no extra service or
+           library needed, works on both the M4 and S3 network paths)
+        """
         if not self._connected:
             return False
+
+        # Source 1: worldtimeapi
         try:
-            url = "http://worldtimeapi.org/api/ip"
-            resp = self.get_json(url)
+            resp = self.get_json("http://worldtimeapi.org/api/ip")
             if resp and "unixtime" in resp:
-                epoch = resp["unixtime"] + (self.timezone_offset * 3600)
-                t = time.localtime(epoch)
-                rtc.RTC().datetime = t
-                print(f"Time synced: {t.tm_hour:02d}:{t.tm_min:02d}")
+                self._apply_utc_epoch(resp["unixtime"])
                 return True
         except Exception as e:
-            print(f"Time sync failed: {e}")
+            print(f"worldtimeapi time sync failed: {e}")
+
+        # Source 2: HTTP Date header
+        try:
+            epoch = self._epoch_from_http_date("http://www.google.com")
+            if epoch is not None:
+                self._apply_utc_epoch(epoch)
+                return True
+        except Exception as e:
+            print(f"HTTP-date time sync failed: {e}")
+
+        print("Time sync failed (all sources)")
         return False
+
+    def _apply_utc_epoch(self, utc_epoch):
+        """Apply a UTC epoch to the RTC, adjusted for the timezone offset."""
+        epoch = int(utc_epoch) + (self.timezone_offset * 3600)
+        t = time.localtime(epoch)
+        rtc.RTC().datetime = t
+        print(f"Time synced: {t.tm_hour:02d}:{t.tm_min:02d}")
+
+    def _epoch_from_http_date(self, url):
+        """Return a UTC epoch parsed from a response's Date header, or None."""
+        if not self.requests:
+            return None
+        resp = self.requests.get(url, headers=self._headers(None))
+        try:
+            headers = resp.headers or {}
+            date_hdr = headers.get("date") or headers.get("Date")
+        finally:
+            resp.close()
+        return self._parse_http_date(date_hdr)
+
+    _MONTHS = {
+        "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
+        "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
+    }
+
+    @classmethod
+    def _parse_http_date(cls, date_str):
+        """Parse an RFC 1123 HTTP date (e.g. 'Wed, 21 Oct 2015 07:28:00 GMT')
+        into a UTC epoch. Returns None on malformed input."""
+        if not date_str:
+            return None
+        try:
+            parts = date_str.split()
+            # ['Wed,', '21', 'Oct', '2015', '07:28:00', 'GMT']
+            day = int(parts[1])
+            month = cls._MONTHS[parts[2]]
+            year = int(parts[3])
+            hh, mm, ss = (int(x) for x in parts[4].split(":"))
+            st = time.struct_time((year, month, day, hh, mm, ss, 0, -1, -1))
+            return time.mktime(st)
+        except (KeyError, ValueError, IndexError):
+            return None
 
     def get_json(self, url, headers=None, retries=2):
         if not self.requests:

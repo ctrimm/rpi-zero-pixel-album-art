@@ -91,11 +91,13 @@ class WeatherMode:
         center_label(self._feels_label, y=43)
         self._group.append(self._feels_label)
 
-        # 3-day forecast row (day + temp)
+        # 3-day forecast row — one compact temperature per column.
+        # (A two-line day+temp cell doesn't fit: "MM/DD" overflows the ~21px
+        # columns and a second line clips off the bottom of the 64px panel.)
         self._forecast_labels = []
-        positions = [2, 24, 46]
+        positions = [3, 25, 47]
         for i, x in enumerate(positions):
-            lbl = make_text_label("---", color=COLORS["gray"], x=x, y=56, scale=1)
+            lbl = make_text_label("--", color=COLORS["gray"], x=x, y=58, scale=1)
             self._forecast_labels.append(lbl)
             self._group.append(lbl)
 
@@ -206,15 +208,13 @@ class WeatherMode:
             self._feels_label.text = f"Feels {int(feels)}{chr(176)}"
             center_label(self._feels_label, y=43)
 
-        # Forecast row
+        # Forecast row — one temperature per column, colored by condition.
         forecast = data.get("forecast", [])
         for i, lbl in enumerate(self._forecast_labels):
             if i < len(forecast):
                 f = forecast[i]
-                day = f.get("day", f.get("dt_txt", "")[-5:] if "dt_txt" in f else "---")
-                day_str = day.replace("-", "/") if day else "---"
                 temp_val = f.get("temp", f.get("main", {}).get("temp", 0) if isinstance(f.get("main"), dict) else 0)
-                lbl.text = f"{day_str}\n{int(temp_val)}{chr(176)}"
+                lbl.text = f"{int(temp_val)}{chr(176)}"
                 lbl.color = _condition_color(f.get("main", "Clear"))
             else:
                 lbl.text = ""

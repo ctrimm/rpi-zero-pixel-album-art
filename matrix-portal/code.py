@@ -36,6 +36,19 @@ matrix = rgbmatrix.RGBMatrix(
 )
 display = framebufferio.FramebufferDisplay(matrix, auto_refresh=True)
 
+
+def set_display_brightness(pct):
+    """Set panel brightness from a 0-100 percentage.
+
+    Some CircuitPython versions don't expose a settable brightness on an
+    rgbmatrix-backed FramebufferDisplay, so guard the assignment - a missing
+    feature should dim nothing, not crash the boot or the poll loop.
+    """
+    try:
+        display.brightness = max(0.05, min(1.0, int(pct) / 100.0))
+    except (AttributeError, NotImplementedError, ValueError) as e:
+        print(f"Brightness not adjustable on this display: {e}")
+
 # ── Config from settings.toml ─────────────────────────────────────────────────
 WIFI_SSID       = os.getenv("CIRCUITPY_WIFI_SSID", "")
 WIFI_PASSWORD   = os.getenv("CIRCUITPY_WIFI_PASSWORD", "")
@@ -57,7 +70,7 @@ WEATHER_UNITS  = os.getenv("WEATHER_UNITS", "imperial")
 ESPN_LEAGUE    = os.getenv("ESPN_LEAGUE", "NBA")
 ESPN_TEAM      = os.getenv("ESPN_TEAM", "LAL")
 
-display.brightness = max(0.05, min(1.0, BRIGHTNESS / 100.0))
+set_display_brightness(BRIGHTNESS)
 
 # ── Splash screen ─────────────────────────────────────────────────────────────
 from utils.display_helper import make_text_label, center_label, COLORS
@@ -256,7 +269,7 @@ while True:
                 if status:
                     new_brightness = status.get("brightness")
                     if new_brightness is not None:
-                        display.brightness = max(0.05, min(1.0, int(new_brightness) / 100.0))
+                        set_display_brightness(new_brightness)
 
                     new_mode = status.get("mode")
                     if new_mode and new_mode != current_mode_name:
