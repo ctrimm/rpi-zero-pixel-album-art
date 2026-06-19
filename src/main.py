@@ -53,7 +53,8 @@ class SpotifyDisplayApp:
         self.running = False
         self.mode_thread = None
         self.manual_mode = False  # Track if user manually selected a mode
-        self.manual_mode_time = 0  # Time of last manual mode change
+        self.using_simulator = False  # True when running the dev GUI simulator
+        self.start_time = time.time()  # For uptime reporting
 
     def _setup_logging(self):
         """Configure application logging"""
@@ -89,8 +90,10 @@ class SpotifyDisplayApp:
             if os.environ.get('LED_SIMULATOR', '').lower() in ('1', 'true', 'yes'):
                 from led_simulator import SimulatedLEDDisplay
                 self.display = SimulatedLEDDisplay(self.config['display'])
+                self.using_simulator = True
             else:
                 self.display = LEDDisplay(self.config['display'])
+                self.using_simulator = False
 
             # Initialize Spotify client
             self.logger.info("Initializing Spotify client...")
@@ -151,9 +154,10 @@ class SpotifyDisplayApp:
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
-        # Check if we're using the simulator (needs main thread for tkinter on macOS)
-        from led_simulator import SimulatedLEDDisplay
-        if isinstance(self.display, SimulatedLEDDisplay):
+        # Check if we're using the simulator (needs main thread for tkinter on macOS).
+        # Use a flag set during initialize() rather than importing led_simulator here,
+        # because importing it pulls in tkinter which is typically absent on a headless Pi.
+        if self.using_simulator:
             self.logger.info("🖥️  Starting simulator GUI on main thread (required for macOS)")
             # Run tkinter mainloop on main thread (blocking)
             # This is required for macOS - background threads run the app logic
@@ -278,7 +282,6 @@ class SpotifyDisplayApp:
             # Set manual mode flag to prevent auto-switching from overriding
             if manual:
                 self.manual_mode = True
-                self.manual_mode_time = time.time()
                 self.logger.debug(f"Manual mode activated for {mode_name}")
 
             # Clear display for new mode
@@ -299,7 +302,7 @@ class SpotifyDisplayApp:
             'brightness': self.config['display']['brightness'],
             'spotify_playing': self.spotify.is_playing() if self.spotify else False,
             'current_track': spotify_status,
-            'uptime': time.time()  # Could track actual uptime
+            'uptime': time.time() - self.start_time
         }
 
     def set_brightness(self, brightness):

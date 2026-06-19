@@ -153,12 +153,17 @@ class SpotifyClient:
         """
         Check if Spotify is currently playing
 
+        Reuses the rate-limited get_current_track() path so this can be called
+        every display-loop iteration (the auto mode switcher does) without firing
+        a fresh Spotify API request each time, which would hammer the API,
+        stutter the screensaver animations, and risk hitting rate limits.
+
         Returns:
             bool: True if playing, False otherwise
         """
         try:
-            current = self.sp.current_user_playing_track()
-            return current is not None and current.get('is_playing', False)
+            track = self.get_current_track()
+            return bool(track and track.get('is_playing', False))
         except Exception as e:
             self.logger.error(f"Error checking playback status: {e}")
             return False

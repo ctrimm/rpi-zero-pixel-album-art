@@ -4,11 +4,23 @@ Provides a visual window showing the 64x64 LED matrix for local development
 """
 
 import logging
-import tkinter as tk
-from PIL import Image, ImageTk, ImageDraw
+from PIL import Image, ImageDraw
 import threading
 import time
 import queue
+
+# tkinter (and PIL's ImageTk, which depends on it) is only needed for the
+# development simulator GUI. On a headless Raspberry Pi the python3-tk package
+# is usually not installed, so importing it must not crash the module - the
+# real hardware path never instantiates the simulator.
+try:
+    import tkinter as tk
+    from PIL import ImageTk
+    TKINTER_AVAILABLE = True
+except ImportError:
+    tk = None
+    ImageTk = None
+    TKINTER_AVAILABLE = False
 
 
 class LEDMatrixSimulator:
@@ -30,6 +42,15 @@ class LEDMatrixSimulator:
             pixel_size: Size of each LED pixel in the window (default 8)
         """
         self.logger = logging.getLogger(__name__)
+
+        if not TKINTER_AVAILABLE:
+            raise RuntimeError(
+                "tkinter is not available - cannot start the LED matrix simulator. "
+                "Install it with 'sudo apt-get install python3-tk' (Linux) or use a "
+                "Python build that includes Tk. The simulator is only needed for "
+                "development; on a Raspberry Pi run against the real LED matrix instead."
+            )
+
         self.width = width
         self.height = height
         self.pixel_size = pixel_size
