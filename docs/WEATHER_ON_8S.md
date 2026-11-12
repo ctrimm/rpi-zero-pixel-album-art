@@ -18,6 +18,28 @@ forecast, then goes back to whatever was showing (album art, the clock, a screen
 Times are in the forecast location's own timezone. Screens without data (e.g. no
 forecast) are skipped.
 
+## Animated weather icons
+
+<p align="center"><img src="media/weather-icons.gif" alt="Animated weather icons on the current, next hours and 3-day screens" width="320"></p>
+
+The current-conditions screen shows a big icon next to the temperature; the next-hours
+and 3-day screens show a small one per period. They're 8-frame pixel-art loops at 10 fps:
+
+| Weather | Icon |
+|---|---|
+| Clear | Sun with twinkling rays — or a crescent moon with blinking stars at night |
+| Few clouds | Sun (or moon) peeking out behind a drifting cloud |
+| Cloudy | Drifting cloud |
+| Rain / drizzle | Falling drops |
+| Thunderstorm | Dark cloud, rain and lightning flashes |
+| Snow | Swaying, falling flakes |
+| Fog / mist / haze | Sliding mist bands |
+| Windy (≥ 20 mph, or gusts ≥ 30 mph) | Gusts blowing across the icon, whatever the sky |
+
+Day or night comes from OpenWeatherMap's own icon codes, so a clear evening gets the moon.
+The icons are drawn in `src/utils/weather_icons.py`; the Matrix Portal version ships sprite
+sheets exported from the same file.
+
 ## Turning it on
 
 Admin panel → **Weather** → **Weather on the 8s** → *Enabled*. It needs an

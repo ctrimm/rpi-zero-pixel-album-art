@@ -20,6 +20,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.weather_data import summarize
+from utils import weather_icons
 
 OWM_CURRENT = "https://api.openweathermap.org/data/2.5/weather"
 OWM_FORECAST = "https://api.openweathermap.org/data/2.5/forecast"
@@ -87,6 +88,7 @@ class WeatherOnThe8sMode:
         self._last_slot = None
         self._last_screen = None
         self._sequence = SEQUENCE
+        self._screen_cache = {}
 
         if self.enabled and not self.api_key:
             self.logger.warning("Weather on the 8s: no OpenWeatherMap API key "
@@ -181,15 +183,43 @@ class WeatherOnThe8sMode:
 
     def _render_sequence(self):
         screen = self._current_screen()
-        if screen == self._last_screen and self.display.current_image is getattr(self, '_last_frame', None):
-            return  # static screen already showing
-        self._last_screen = screen
-        image = self.render_screen(screen)
-        self.display.display_image(image)
+        t = time.time() - self.animation_start
+        frame = int(t * weather_icons.FPS)
+        key = (screen, frame % weather_icons.FRAMES if self._icons_for(screen) else 0)
+        if key == self._last_screen and self.display.current_image is getattr(self, '_last_frame', None):
+            return  # nothing changed (static screen, or same animation frame)
+        self._last_screen = key
+        self.display.display_image(self.render_screen(screen, t))
         self._last_frame = self.display.current_image
 
-    def render_screen(self, screen):
-        """Draw one screen of the sequence (also used by the README demo)."""
+    def render_screen(self, screen, t=0.0):
+        """Draw one screen of the sequence at time t (seconds) into it.
+        The static part is cached; only the animated icons are drawn per frame."""
+        base, icons = self._static_screen(screen)
+        if not icons:
+            return base
+        img = base.copy()
+        frame = int(t * weather_icons.FPS)
+        for kind, x, y, scale in icons:
+            icon = weather_icons.frame(kind, frame, scale)
+            img.paste(icon, (x, y), icon)
+        return img
+
+    def _icons_for(self, screen):
+        return self._static_screen(screen)[1]
+
+    def _static_screen(self, screen):
+        key = (screen, id(self.data))
+        cached = self._screen_cache.get(key)
+        if cached is None:
+            cached = self._draw_static(screen)
+            self._screen_cache = {k: v for k, v in self._screen_cache.items() if k[1] == id(self.data)}
+            self._screen_cache[key] = cached
+        return cached
+
+    def _draw_static(self, screen):
+        """Background + text for a screen, and where its icons go:
+        returns (image, [(kind, x, y, scale)])."""
         width, height = self.display.get_size()
         img = Image.new('RGB', (width, height))
         draw = ImageDraw.Draw(img)
@@ -198,6 +228,7 @@ class WeatherOnThe8sMode:
             draw.line([(0, y), (width, y)], fill=tuple(int(a + (b - a) * f) for a, b in zip(BG_TOP, BG_BOTTOM)))
         d = self.data or {}
         sym = '°'
+        icons = []
 
         if screen == 'intro':
             self._center(draw, "WEATHER", 6, WHITE)
@@ -209,11 +240,20 @@ class WeatherOnThe8sMode:
             self._center(draw, "forecast", 40, YELLOW)
         elif screen == 'current':
             self._header(draw, d.get('city') or "NOW")
-            self._big_center(img, f"{d.get('temp', '--')}{sym}", 15, YELLOW)
+            temp = f"{d.get('temp', '--')}{sym}"
+            temp_w = self._w(temp) * 2
+            # Big (24px) icon beside the big temperature; small icon if the
+            # temperature needs the room (e.g. "100°", "-12°")
+            big = temp_w <= width - 28
+            kind = d.get('kind') or 'cloud'
+            icons.append((kind, 2, 14 if big else 20, 2 if big else 1))
+            if d.get('windy'):
+                icons.append(('wind', 2, 14 if big else 20, 2 if big else 1))
+            self._big_text(img, temp, width - 1 - temp_w, 15 if big else 16, YELLOW)
             cond = d.get('condition', '')
-            self._center(draw, cond, 38, COND_COLORS.get(cond, WHITE))
+            self._center(draw, cond, 40, COND_COLORS.get(cond, WHITE))
             if d.get('hi') is not None:
-                self._center(draw, f"H{d['hi']}{sym} L{d['lo']}{sym}", 50, LIGHT_BLUE)
+                self._center(draw, f"H{d['hi']}{sym} L{d['lo']}{sym}", 51, LIGHT_BLUE)
         elif screen == 'details':
             self._header(draw, "CONDITIONS")
             rows = [("Hum", f"{d.get('humidity', '--')}%"), ("Wind", d.get('wind', '--')),
@@ -227,21 +267,25 @@ class WeatherOnThe8sMode:
             start = 2 * int(screen[-1])
             for col, h in enumerate(d.get('hourly', [])[start:start + 2]):
                 cx = 16 + col * 32
-                self._center(draw, h['time'], 16, WHITE, cx)
-                self._center(draw, f"{h['temp']}{sym}", 28, YELLOW, cx)
-                cond = h['condition']
-                self._center(draw, cond[:5], 40, COND_COLORS.get(cond, GREY), cx)
+                self._center(draw, h['time'], 13, WHITE, cx)
+                icons.append((h.get('kind') or 'cloud', cx - 6, 24, 1))
+                self._center(draw, f"{h['temp']}{sym}", 37, YELLOW, cx)
                 if h.get('pop', 0) >= 20:
-                    self._center(draw, f"{h['pop']}%", 51, LIGHT_BLUE, cx)
+                    self._center(draw, f"{h['pop']}%", 48, LIGHT_BLUE, cx)
             draw.line([(32, 15), (32, 60)], fill=HEADER)
         elif screen == 'daily':
             self._header(draw, "3-DAY")
             for i, day in enumerate(d.get('daily', [])[:3]):
-                y = 17 + i * 15
-                draw.text((2, y), day['day'], font=self.font, fill=COND_COLORS.get(day['condition'], WHITE))
-                temps = f"{day['hi']}/{day['lo']}"
-                draw.text((width - 2 - self._w(temps), y), temps, font=self.font, fill=YELLOW)
-        return img
+                y = 15 + i * 16
+                draw.text((1, y + 1), day['day'], font=self.font, fill=WHITE)
+                icons.append((day.get('kind') or 'cloud', 20, y, 1))
+                # High (yellow) and low (light blue), right-aligned
+                hi, lo = str(day['hi']), str(day['lo'])
+                lo_x = width - 2 - self._w(lo)
+                hi_x = lo_x - 3 - self._w(hi)
+                draw.text((hi_x, y + 1), hi, font=self.font, fill=YELLOW)
+                draw.text((lo_x, y + 1), lo, font=self.font, fill=LIGHT_BLUE)
+        return img, icons
 
     def _w(self, text):
         return int(self.font.getlength(text)) if hasattr(self.font, 'getlength') else self.font.getbbox(text)[2]
@@ -262,6 +306,13 @@ class WeatherOnThe8sMode:
         width = self.display.get_size()[0]
         draw.rectangle([0, 0, width - 1, 11], fill=HEADER)
         self._center(draw, str(text).upper(), 1, YELLOW)
+
+    def _big_text(self, img, text, x, y, color):
+        """2x pixel-doubled text at (x, y)."""
+        w = self._w(text)
+        mask = Image.new('L', (max(1, w), 11))
+        ImageDraw.Draw(mask).text((0, 0), text, font=self.font, fill=255)
+        img.paste(color, (x, y), mask.resize((w * 2, 22), Image.NEAREST))
 
     def _big_center(self, img, text, y, color):
         """2x pixel-doubled text (chunky, crisp on LEDs)."""
