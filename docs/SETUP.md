@@ -133,7 +133,8 @@ Save and exit (Ctrl+X, Y, Enter)
 ### Step 4: Authenticate
 
 ```bash
-python3 src/main.py
+# As your normal user (not sudo)
+venv/bin/python src/spotify_auth.py
 ```
 
 On first run:
@@ -178,7 +179,7 @@ Edit `config.json`:
 
 ```bash
 cd ~/rpi-zero-pixel-album-art
-python3 src/main.py
+sudo venv/bin/python src/main.py
 ```
 
 You should see:
@@ -305,7 +306,7 @@ sudo reboot
 
 ```bash
 # Start manually
-python3 src/main.py
+sudo venv/bin/python src/main.py
 
 # Start service
 sudo systemctl start spotify-display

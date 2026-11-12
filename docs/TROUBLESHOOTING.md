@@ -17,19 +17,20 @@ Common issues and solutions for the Spotify LED Matrix Display.
 
 ### Python Dependencies Won't Install
 
-**Problem:** `pip3 install` fails with errors
+**Problem:** `pip install` fails with errors (e.g. `externally-managed-environment`)
+
+Current Raspberry Pi OS doesn't allow system-wide `pip install`. The app uses a
+virtualenv in `./venv` - always use `venv/bin/pip` / `venv/bin/python`.
 
 **Solutions:**
 ```bash
-# Update pip
-sudo pip3 install --upgrade pip
+# Re-run the installer (safe to run again)
+sudo bash install.sh
 
-# Install missing system libraries
-sudo apt-get install python3-dev libatlas-base-dev
-
-# Try installing problematic packages individually
-sudo pip3 install Pillow
-sudo pip3 install spotipy
+# Or install manually into the virtualenv
+python3 -m venv venv
+venv/bin/pip install --upgrade pip
+venv/bin/pip install -r requirements.txt
 ```
 
 ### rpi-rgb-led-matrix Won't Build
@@ -41,11 +42,10 @@ sudo pip3 install spotipy
 # Install build dependencies
 sudo apt-get install build-essential python3-dev cython3
 
-# Clean and rebuild
-cd ~/rpi-rgb-led-matrix
-make clean
-make build-python PYTHON=$(which python3)
-sudo make install-python PYTHON=$(which python3)
+# Rebuild the Python bindings into the app's virtualenv
+sudo apt-get install cmake
+cd ~/rpi-zero-pixel-album-art
+venv/bin/pip install --force-reinstall ~/rpi-rgb-led-matrix
 ```
 
 ### Permission Denied Errors
@@ -54,10 +54,10 @@ sudo make install-python PYTHON=$(which python3)
 
 **Solutions:**
 ```bash
-# Run with sudo for GPIO access
-sudo python3 src/main.py
+# Run with sudo for GPIO access (the library drops back to your user after init)
+sudo venv/bin/python src/main.py
 
-# Or add user to gpio group
+# Running without sudo works via /dev/gpiomem, but expect flicker
 sudo usermod -a -G gpio $USER
 # Then logout and back in
 
@@ -193,7 +193,7 @@ Common mappings:
 2. **Different hardware mapping:**
 ```bash
 # Test different mappings
-sudo python3 src/main.py
+sudo venv/bin/python src/main.py
 # Edit config.json and try: regular, adafruit-hat, regular-pi1, classic-pi1
 ```
 
@@ -218,8 +218,8 @@ sudo python3 src/main.py
 # Delete cached token
 rm -rf ~/.cache/spotify-display/
 
-# Run again - will prompt for authentication
-python3 src/main.py
+# Sign in again (as your normal user, not sudo)
+venv/bin/python src/spotify_auth.py
 ```
 
 ### "Nothing playing" even when Spotify is running
@@ -245,7 +245,7 @@ Edit `config.json`:
 3. **Re-authenticate:**
 ```bash
 rm -rf ~/.cache/spotify-display/
-python3 src/main.py
+venv/bin/python src/spotify_auth.py
 ```
 
 4. **Check Spotify privacy settings:**
@@ -443,7 +443,7 @@ python3 -c "import json; json.load(open('config.json'))"
 2. **Missing dependencies:**
 ```bash
 cd ~/rpi-zero-pixel-album-art
-sudo pip3 install -r requirements.txt
+venv/bin/pip install -r requirements.txt
 ```
 
 3. **Permission issues:**

@@ -9,6 +9,8 @@ import os
 import platform
 from PIL import Image, ImageDraw, ImageFont
 
+from utils.runtime import service_user
+
 # Check if we should use simulator
 def should_use_simulator():
     """Detect if we should use the simulator instead of real hardware"""
@@ -86,7 +88,13 @@ class LEDDisplay:
             options.show_refresh_rate = self.config.get('show_refresh_rate', False)
 
             # Disable hardware pulsing
-            options.disable_hardware_pulsing = True
+            options.disable_hardware_pulsing = self.config.get('disable_hardware_pulsing', True)
+
+            # The library needs root for flicker-free timing, then drops
+            # privileges right after init. By default it drops to 'daemon',
+            # which can't read the Spotify login or config in the user's home,
+            # so drop to the user the app was installed for instead.
+            self._configure_privilege_drop(options)
 
             self.matrix = RGBMatrix(options=options)
             self.offscreen_canvas = self.matrix.CreateFrameCanvas()
@@ -98,6 +106,29 @@ class LEDDisplay:
         except Exception as e:
             self.logger.error(f"Failed to initialize LED matrix: {e}")
             raise
+
+    def _configure_privilege_drop(self, options):
+        """Point the library's post-init privilege drop at our service user."""
+        if not hasattr(os, 'geteuid'):
+            return
+        if os.geteuid() != 0:
+            self.logger.warning(
+                "Not running as root: the LED matrix will use /dev/gpiomem and may "
+                "flicker. The systemd service from install.sh runs it correctly."
+            )
+            return
+        user = service_user()
+        if not user or user == 'root' or not hasattr(options, 'drop_priv_user'):
+            return
+        try:
+            import pwd
+            import grp
+            entry = pwd.getpwnam(user)
+            options.drop_priv_user = user
+            options.drop_priv_group = grp.getgrgid(entry.pw_gid).gr_name
+            self.logger.info(f"LED matrix will drop root privileges to '{user}' after init")
+        except (KeyError, ImportError) as e:
+            self.logger.warning(f"Can't drop privileges to '{user}': {e}")
 
     def display_image(self, image):
         """

@@ -12,6 +12,8 @@ import requests
 from PIL import Image, ImageEnhance, ImageDraw, ImageFont
 from cachetools import LRUCache
 
+from utils.runtime import cache_dir
+
 
 class ImageProcessor:
     """Process and optimize images for LED matrix display"""
@@ -32,7 +34,7 @@ class ImageProcessor:
         self.image_cache = LRUCache(maxsize=50) if self.cache_enabled else None
 
         # Create cache directory
-        self.cache_dir = Path.home() / '.cache' / 'spotify-display' / 'images'
+        self.cache_dir = cache_dir() / 'images'
         if self.cache_enabled:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -210,11 +212,11 @@ class ImageProcessor:
 
         try:
             font = ImageFont.load_default()
-            bbox = draw.textbbox((0, 0), text, font=font)
+            bbox = draw.multiline_textbbox((0, 0), text, font=font, align='center')
             text_width = bbox[2] - bbox[0]
             text_height = bbox[3] - bbox[1]
-            position = ((size[0] - text_width) // 2, (size[1] - text_height) // 2)
-            draw.text(position, text, font=font, fill=color)
+            position = ((size[0] - text_width) // 2 - bbox[0], (size[1] - text_height) // 2 - bbox[1])
+            draw.multiline_text(position, text, font=font, fill=color, align='center')
         except Exception as e:
             self.logger.error(f"Error creating text image: {e}")
 
