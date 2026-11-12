@@ -64,6 +64,7 @@ ESPN_TEAM      = _setting("ESPN_TEAM", "LAL")
 
 CLOCK_STYLE    = _setting("CLOCK_STYLE", "digital")
 SHOW_TRACK_INFO = bool(_int_setting("SHOW_TRACK_INFO", 1))
+WEATHER_ON_8S  = bool(_int_setting("WEATHER_ON_8S", 0))
 TIME_FORMAT    = _setting("TIME_FORMAT", "12h")
 AUTO_SWITCH    = _int_setting("AUTO_SWITCH", 1)
 FALLBACK_MODE  = _setting("FALLBACK_MODE", "clock")
@@ -257,6 +258,12 @@ def get_mode(name):
 
 print("Registering modes…")
 _register_modes()
+
+# Weather on the 8s: takes over the panel at :x8 for ~46 seconds
+from modes.weather8s_mode import WeatherOn8s
+weather8s = WeatherOn8s(display, network, companion_url=COMPANION_URL, api_key=OWM_API_KEY,
+                        location=WEATHER_LOC, units=WEATHER_UNITS, enabled=WEATHER_ON_8S,
+                        small_ram=not IS_S3)
 gc.collect()
 print(f"Free RAM after mode registration: {gc.mem_free()} bytes")
 
@@ -344,6 +351,9 @@ def switch_mode(name, manual=False):
     current_mode_name = name
     current_mode = get_mode(name)
     current_mode.on_enter()
+    if weather8s.active:
+        # Weather on the 8s keeps the screen; the new mode shows when it ends
+        display.root_group = weather8s.group
 
 
 def cycle_mode():
@@ -406,7 +416,14 @@ def show_overlay(kind, seconds):
 def end_overlay():
     global _overlay_until
     _overlay_until = 0
-    if current_mode is not None and getattr(current_mode, "_group", None) is not None:
+    show_current_mode()
+
+
+def show_current_mode():
+    """Put the right thing back on screen after an overlay / Weather on the 8s."""
+    if weather8s.active and weather8s.group is not None:
+        display.root_group = weather8s.group
+    elif current_mode is not None and getattr(current_mode, "_group", None) is not None:
         display.root_group = current_mode._group
 
 
@@ -456,6 +473,9 @@ def poll_companion():
             music = _mode_instances.get("music")
             if music is not None:
                 music.set_show_info(show)
+
+    if "weather_on_8s" in data:
+        weather8s.enabled = bool(data["weather_on_8s"])
 
     if "track" in data:
         now_playing.apply_companion(data.get("track"))
@@ -525,11 +545,22 @@ while True:
 
         check_auto_switch(t)
 
+        # ── Weather on the 8s ─────────────────────────────────────────────────
+        if weather8s.active:
+            if not weather8s.update(now):
+                show_current_mode()          # finished: hand the screen back
+        elif weather8s.due(t):
+            if weather8s.start(t, now) and not _overlay_until:
+                display.root_group = weather8s.group
+                weather8s.update(now)
+        else:
+            weather8s.maybe_prefetch(t, now)
+
         # ── Draw ──────────────────────────────────────────────────────────────
         if _overlay_until:
             if now >= _overlay_until:
                 end_overlay()
-        elif current_mode:
+        elif current_mode and not weather8s.active:
             current_mode.update()
 
         # ── Housekeeping ──────────────────────────────────────────────────────

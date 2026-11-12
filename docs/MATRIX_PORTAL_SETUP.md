@@ -28,6 +28,7 @@ WiFi co-processor.
 | Album art + scrolling artist/track + progress bar | Companion (both boards) or standalone on the S3 |
 | Automatic mode switching | Album art when music starts, clock when it stops. A mode you pick by hand stays until music starts again — same rules as the Pi version |
 | Weather (current + 3-day) | Direct OpenWeatherMap or via the companion |
+| Weather on the 8s | Classic Weather Channel-style local forecast at :08, :18, … :58 (~46 s), then back to what was showing |
 | Sports scores | Live / final / upcoming, team colours and records (ESPN, no key) |
 | Clock | Digital or analog, 12h or 24h, NTP-synced |
 | Screensavers | Pipes and DVD logo |
@@ -92,6 +93,7 @@ The file is commented; the useful extras:
 
 | Setting | Default | |
 |---|---|---|
+| `WEATHER_ON_8S` | `0` | local forecast at :08, :18, … :58. With the companion, its admin panel (*Weather*) controls this |
 | `SHOW_TRACK_INFO` | `1` | song + artist over the album art (long names scroll); `0` = art only. With the companion, its admin panel (*Now playing*) controls this |
 | `CLOCK_STYLE` | `digital` | or `analog` |
 | `TIME_FORMAT` | `12h` | or `24h` |
@@ -197,4 +199,3 @@ Serial console (prints what the board is doing): `screen /dev/tty.usbmodem* 1152
 | Web UI on the Pi | Web UI on the companion |
 | Spotify login on the Pi | Login on the companion (or a refresh token in `settings.toml`) |
 | Hardware brightness | Software dimming |
-| Weather on the 8s | Not available |

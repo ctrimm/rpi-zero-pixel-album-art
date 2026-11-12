@@ -54,6 +54,7 @@ CONFIG_FILE = BASE_DIR / "companion_config.json"
 sys.path.insert(0, str(REPO_DIR / "src"))
 from spotify_client import SpotifyClient, make_auth_manager, browser_available  # noqa: E402
 from utils.image_processor import ImageProcessor  # noqa: E402
+from utils.weather_data import summarize  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log = logging.getLogger("companion")
@@ -72,6 +73,7 @@ DEFAULT_CONFIG = {
         "api_key": "",
         "location": "New York,US",
         "units": "imperial",
+        "on_8s": False,
     },
     "sports": {
         "enabled": True,
@@ -275,10 +277,11 @@ def get_weather():
         resp.raise_for_status()
         c = resp.json()
         fc_resp = requests.get("https://api.openweathermap.org/data/2.5/forecast",
-                               params=dict(params, cnt=24), timeout=10)
+                               params=dict(params, cnt=32), timeout=10)
         fc_resp.raise_for_status()
+        fc = fc_resp.json()
         forecast, seen = [], set()
-        for entry in fc_resp.json().get("list", []):
+        for entry in fc.get("list", []):
             day = entry["dt_txt"][:10]
             if day not in seen and len(forecast) < 3:
                 seen.add(day)
@@ -294,6 +297,8 @@ def get_weather():
             "city":        c.get("name", cfg["location"]),
             "units":       cfg["units"],
             "forecast":    forecast,
+            # Weather on the 8s (same summary as the Pi app)
+            "w8":          summarize(c, fc, cfg["units"]),
         }
         _weather["fetched"] = now
         return _weather["data"]
@@ -396,6 +401,7 @@ def matrix_status():
             _state["device_seen"] = time.time()
         reply = {k: _state[k] for k in ("mode", "mode_seq", "brightness", "command", "command_seq")}
     reply["show_track_info"] = bool(config["display"].get("show_track_info", True))
+    reply["weather_on_8s"] = bool(config["weather"].get("on_8s", False))
     reply["track"] = _track_for_device(spotify_mgr.track())
     return jsonify(reply)
 
@@ -575,6 +581,8 @@ ADMIN_SCHEMA = {
                     "<code>python companion.py --auth</code>. The companion reconnects within a minute."}]},
         {"id": "weather", "icon": "🌤️", "title": "Weather", "desc": "Uses a free OpenWeatherMap API key.",
          "cards": [{"title": "Weather", "fields": [
+             {"path": "weather.on_8s", "label": "Weather on the 8s", "type": "toggle", "def": False,
+              "help": "Takes over the display at :08, :18, :28, :38, :48 and :58 for a ~46s local forecast."},
              {"path": "weather.api_key", "label": "OpenWeatherMap API key", "type": "secret"},
              {"path": "weather.location", "label": "Location", "type": "text",
               "help": "City,State,Country, e.g. <code>Chicago,IL,US</code>"},

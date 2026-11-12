@@ -41,6 +41,11 @@ TIME_FORMAT = "12h"
 # pipes, dvd, or both (alternates)
 SCREENSAVER_TYPE = "both"
 
+# Weather on the 8s: a ~46s local forecast at :08, :18, :28, :38, :48 and :58.
+# Needs the companion or OPENWEATHER_API_KEY. 1 = on, 0 = off.
+# With the companion, its admin panel (Weather) controls this instead.
+WEATHER_ON_8S = 0
+
 # Automatic switching (same rules as the Pi version): show album art when music
 # starts, FALLBACK_MODE when it stops. A mode you pick by hand stays until music
 # starts again. 1 = on, 0 = off.

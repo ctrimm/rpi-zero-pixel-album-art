@@ -96,6 +96,13 @@ class _Dimmer:
         self._rgb565.append(entry)
         self._apply_rgb565(entry)
 
+    def forget(self, labels=(), palettes=()):
+        """Stop tracking these labels/palettes (so they can be freed)."""
+        if labels:
+            self._labels = [e for e in self._labels if not any(e[0] is l for l in labels)]
+        if palettes:
+            self._palettes = [e for e in self._palettes if not any(e[0] is p for p in palettes)]
+
     def forget_bitmap(self, dest):
         self._rgb565 = [e for e in self._rgb565 if e[1] is not dest]
 
