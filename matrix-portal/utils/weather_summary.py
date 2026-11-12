@@ -25,6 +25,37 @@ CONDITION_NAMES = {
 }
 
 
+def icon_kind(main, icon=None):
+    """Which animated icon to show (see utils/weather_icons.py). `icon` is
+    OWM's icon code, e.g. "02n": the digits say how cloudy, d/n day or night."""
+    icon = icon or ""
+    night = icon.endswith("n")
+    if main in ("Thunderstorm", "Tornado"):
+        return "storm"
+    if main in ("Rain", "Drizzle", "Squall"):
+        return "rain"
+    if main == "Snow":
+        return "snow"
+    if main == "Clear":
+        return "moon" if night else "sun"
+    if main == "Clouds":
+        if icon[:2] == "02":   # "few clouds": sun/moon peeking out
+            return "partly_night" if night else "partly_day"
+        return "cloud"
+    if main in ("Mist", "Fog", "Haze", "Smoke", "Dust", "Sand", "Ash"):
+        return "fog"
+    return "cloud"
+
+
+def is_windy(wind, units="imperial"):
+    """Strong enough to show gusts: ~20 mph sustained or ~30 mph gusts."""
+    speed = (wind or {}).get("speed") or 0
+    gust = (wind or {}).get("gust") or 0
+    if units == "imperial":
+        return speed >= 20 or gust >= 30
+    return speed >= 9 or gust >= 13
+
+
 def condition_name(main):
     return CONDITION_NAMES.get(main or "", (main or "?")[:7])
 
@@ -66,10 +97,12 @@ def summarize(current, forecast, units="imperial"):
     hourly = []
     for e in entries[:4]:
         t = _utc(e["dt"] + tz)
+        w = e["weather"][0]
         hourly.append({
             "time": _hour_label(t.tm_hour),
             "temp": round(e["main"]["temp"]),
-            "condition": condition_name(e["weather"][0]["main"]),
+            "condition": condition_name(w["main"]),
+            "kind": icon_kind(w["main"], w.get("icon") or ("d" if 6 <= t.tm_hour < 18 else "n")),
             "pop": round((e.get("pop") or 0) * 100),
         })
 
@@ -82,7 +115,7 @@ def summarize(current, forecast, units="imperial"):
         if key == today:
             continue
         if key not in days:
-            days[key] = {"day": DAY_NAMES[t.tm_wday], "temps": [], "cond": None, "best": 99}
+            days[key] = {"day": DAY_NAMES[t.tm_wday], "temps": [], "cond": None, "icon": None, "best": 99}
             order.append(key)
         d = days[key]
         d["temps"].append(e["main"]["temp"])
@@ -90,12 +123,14 @@ def summarize(current, forecast, units="imperial"):
         if closeness < d["best"]:
             d["best"] = closeness
             d["cond"] = e["weather"][0]["main"]
+            d["icon"] = (e["weather"][0].get("icon") or "01")[:2] + "d"   # daytime icon
     daily = []
     for key in order[:3]:
         d = days[key]
         if len(d["temps"]) >= 2:  # skip a day we only have one reading for
             daily.append({"day": d["day"], "hi": round(max(d["temps"])),
-                          "lo": round(min(d["temps"])), "condition": condition_name(d["cond"])})
+                          "lo": round(min(d["temps"])), "condition": condition_name(d["cond"]),
+                          "kind": icon_kind(d["cond"], d["icon"])})
 
     return {
         "city": current.get("name", ""),
@@ -103,7 +138,10 @@ def summarize(current, forecast, units="imperial"):
         "feels": round(main.get("feels_like", main.get("temp", 0))),
         "hi": round(max(today_temps)) if today_temps else None,
         "lo": round(min(today_temps)) if today_temps else None,
-        "condition": condition_name(weather.get("main")),
+        "condition": ("Few clouds" if icon_kind(weather.get("main"), weather.get("icon")).startswith("partly")
+                      else condition_name(weather.get("main"))),
+        "kind": icon_kind(weather.get("main"), weather.get("icon")),
+        "windy": is_windy(wind, units),
         "humidity": main.get("humidity"),
         "wind": f"{wind_direction(wind.get('deg'))} {round(wind.get('speed', 0))}",
         "visibility": (f"{round(vis_m / (1609.34 if imperial else 1000))}{'mi' if imperial else 'km'}"

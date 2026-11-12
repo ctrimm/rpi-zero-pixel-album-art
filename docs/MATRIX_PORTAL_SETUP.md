@@ -28,7 +28,7 @@ WiFi co-processor.
 | Album art + scrolling artist/track + progress bar | Companion (both boards) or standalone on the S3 |
 | Automatic mode switching | Album art when music starts, clock when it stops. A mode you pick by hand stays until music starts again — same rules as the Pi version |
 | Weather (current + 3-day) | Direct OpenWeatherMap or via the companion |
-| Weather on the 8s | Classic Weather Channel-style local forecast at :08, :18, … :58 (~46 s), then back to what was showing |
+| Weather on the 8s | Classic Weather Channel-style local forecast at :08, :18, … :58 (~46 s) with animated weather icons (sun, moon, clouds, rain, storms, snow, fog, wind gusts), then back to what was showing |
 | Sports scores | Live / final / upcoming, team colours and records (ESPN, no key) |
 | Clock | Digital or analog, 12h or 24h, NTP-synced |
 | Screensavers | Pipes and DVD logo |
@@ -77,6 +77,7 @@ CIRCUITPY/
 ├── boot.py
 ├── code.py
 ├── settings.toml          ← fill in your values (Part 4)
+├── icons/                 ← animated weather icons (Weather on the 8s)
 ├── modes/
 └── utils/
 ```

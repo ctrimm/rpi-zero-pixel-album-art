@@ -12,6 +12,7 @@ import time
 
 from utils.display_helper import (
     make_text_label, make_palette, make_bitmap, fill_bitmap, set_label_color, dimmer,
+    register_palette,
 )
 from utils.weather_summary import summarize
 
@@ -32,6 +33,10 @@ DEG = chr(176)
 SEQUENCE = (("intro", 3), ("current", 8), ("details", 8),
             ("hourly0", 8), ("hourly1", 8), ("daily", 8), ("outro", 3))
 _POOL = 10   # labels reused across screens
+ICON_DIR = "/icons"   # sprite sheets exported from src/utils/weather_icons.py
+ICON_SIZE = 12
+ICON_FRAMES = 8
+ICON_FPS = 10
 
 
 def _fit(text, max_px=62):
@@ -62,6 +67,10 @@ class WeatherOn8s:
         self._header = None
         self._divider = None
         self._palettes = []
+        self._sheets = {}      # kind -> (bitmap, palette), loaded per sequence
+        self._icons = []       # TileGrids showing on the current screen
+        self._icon_layer = None
+        self._frame = -1
 
     # ── Scheduling ──────────────────────────────────────────────────────────
 
@@ -130,11 +139,21 @@ class WeatherOn8s:
         if screen != self._screen:
             self._screen = screen
             self._render(screen)
+            self._frame = -1
+        # Animate the icons: just pick the next tile of each sprite sheet
+        frame = int((now - self._start) * ICON_FPS) % ICON_FRAMES
+        if frame != self._frame:
+            self._frame = frame
+            for grid in self._icons:
+                grid[0] = frame
         return True
 
     def stop(self):
-        dimmer.forget(self._labels, self._palettes)
+        dimmer.forget(self._labels, self._palettes + [p for _, p in self._sheets.values()])
         self._palettes = []
+        self._sheets = {}
+        self._icons = []
+        self._icon_layer = None
         self._start = None
         self.group = None
         self._labels = []
@@ -188,6 +207,8 @@ class WeatherOn8s:
         g.append(self._header)
         self._divider = displayio.TileGrid(make_bitmap(1, 46, 1), pixel_shader=self._palettes[2], x=32, y=15)
         g.append(self._divider)
+        self._icon_layer = displayio.Group()
+        g.append(self._icon_layer)
         self._labels = []
         for _ in range(_POOL):
             lbl = make_text_label("", color=WHITE)
@@ -195,10 +216,37 @@ class WeatherOn8s:
             g.append(lbl)
         self.group = g
 
-    def _put(self, i, text, color, y, align="c", x=32, scale=1):
+    def _sheet(self, kind):
+        if kind not in self._sheets:
+            try:
+                import adafruit_imageload
+                bitmap, palette = adafruit_imageload.load(
+                    f"{ICON_DIR}/{kind}.bmp", bitmap=displayio.Bitmap, palette=displayio.Palette)
+                palette.make_transparent(0)
+                register_palette(palette)
+                self._sheets[kind] = (bitmap, palette)
+            except (OSError, ValueError) as e:
+                print(f"Weather icon {kind} missing: {e}")
+                self._sheets[kind] = None
+        return self._sheets[kind]
+
+    def _icon(self, kind, x, y, scale=1):
+        """Show an animated icon (12px, or 24px with scale=2) at (x, y)."""
+        sheet = self._sheet(kind or "cloud")
+        if sheet is None:
+            return
+        grid = displayio.TileGrid(sheet[0], pixel_shader=sheet[1], width=1, height=1,
+                                  tile_width=ICON_SIZE, tile_height=ICON_SIZE, default_tile=0)
+        holder = displayio.Group(scale=scale, x=x, y=y)
+        holder.append(grid)
+        self._icon_layer.append(holder)
+        self._icons.append(grid)
+
+    def _put(self, i, text, color, y, align="c", x=32, scale=1, max_px=None):
         lbl = self._labels[i]
-        max_px = 62 if align == "c" and x == 32 else 31
-        lbl.text = _fit(text, max_px // scale * 1)
+        if max_px is None:
+            max_px = 62 if align == "c" and x == 32 else 31
+        lbl.text = _fit(text, max_px // scale)
         lbl.scale = scale
         set_label_color(lbl, color)
         w = len(lbl.text) * 6 * scale
@@ -214,6 +262,9 @@ class WeatherOn8s:
         d = self.data or {}
         for lbl in self._labels:
             lbl.text = ""
+        while len(self._icon_layer):
+            self._icon_layer.pop()
+        self._icons = []
         self._header.hidden = screen in ("intro", "outro")
         self._divider.hidden = not screen.startswith("hourly")
         if screen == "intro":
@@ -226,11 +277,19 @@ class WeatherOn8s:
             self._put(2, "forecast", YELLOW, 45)
         elif screen == "current":
             self._put(0, (d.get("city") or "NOW").upper(), YELLOW, 5)
-            self._put(1, f"{d.get('temp', '--')}{DEG}", YELLOW, 25, scale=2)
+            temp = f"{d.get('temp', '--')}{DEG}"
+            # Big icon beside the big temperature; small one if it needs the room
+            big = len(temp) * 12 <= 64 - 28
+            kind = d.get("kind") or "cloud"
+            iy = 14 if big else 20
+            self._icon(kind, 2, iy, 2 if big else 1)
+            if d.get("windy"):
+                self._icon("wind", 2, iy, 2 if big else 1)
+            self._put(1, temp, YELLOW, 25, align="r", x=64, scale=2, max_px=64 - (28 if big else 16))
             cond = d.get("condition", "")
-            self._put(2, cond, COND_COLORS.get(cond, WHITE), 42)
+            self._put(2, cond, COND_COLORS.get(cond, WHITE), 45)
             if d.get("hi") is not None:
-                self._put(3, f"H{d['hi']}{DEG} L{d['lo']}{DEG}", LIGHT_BLUE, 55)
+                self._put(3, f"H{d['hi']}{DEG} L{d['lo']}{DEG}", LIGHT_BLUE, 56)
         elif screen == "details":
             self._put(0, "CONDITIONS", YELLOW, 5)
             rows = (("Hum", f"{d.get('humidity', '--')}%"), ("Wind", d.get("wind") or "--"),
@@ -244,16 +303,19 @@ class WeatherOn8s:
             start = 2 * int(screen[-1])
             for col, h in enumerate(d.get("hourly", [])[start:start + 2]):
                 cx = 16 + col * 32
-                base = 1 + col * 4
-                self._put(base, h["time"], WHITE, 21, x=cx)
-                self._put(base + 1, f"{h['temp']}{DEG}", YELLOW, 33, x=cx)
-                cond = h["condition"]
-                self._put(base + 2, cond[:5], COND_COLORS.get(cond, GREY), 45, x=cx)
+                base = 1 + col * 3
+                self._put(base, h["time"], WHITE, 18, x=cx)
+                self._icon(h.get("kind"), cx - 6, 25)
+                self._put(base + 1, f"{h['temp']}{DEG}", YELLOW, 43, x=cx)
                 if h.get("pop", 0) >= 20:
-                    self._put(base + 3, f"{h['pop']}%", LIGHT_BLUE, 56, x=cx)
+                    self._put(base + 2, f"{h['pop']}%", LIGHT_BLUE, 54, x=cx)
         elif screen == "daily":
             self._put(0, "3-DAY", YELLOW, 5)
             for i, day in enumerate(d.get("daily", [])[:3]):
-                y = 22 + i * 15
-                self._put(1 + 2 * i, day["day"], COND_COLORS.get(day["condition"], WHITE), y, align="l", x=2)
-                self._put(2 + 2 * i, f"{day['hi']}/{day['lo']}", YELLOW, y, align="r", x=62)
+                y = 15 + i * 16
+                self._put(1 + 3 * i, day["day"], WHITE, y + 6, align="l", x=1)
+                self._icon(day.get("kind"), 20, y)
+                lo = str(day["lo"])
+                lo_x = 62 - len(lo) * 6
+                self._put(2 + 3 * i, day["hi"], YELLOW, y + 6, align="r", x=lo_x - 3)
+                self._put(3 + 3 * i, lo, LIGHT_BLUE, y + 6, align="r", x=62)
