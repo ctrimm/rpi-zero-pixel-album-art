@@ -64,7 +64,14 @@ A standalone Raspberry Pi solution that displays album art, weather, and sports 
 |-------------|------------|----------|
 | Pi Zero 2 W | ~$51 | Budget builds, low power |
 | Pi 4B 2GB | ~$81 | Better performance, faster image processing |
-| ESP32 Alternative | ~$39 | Ultra-low power, advanced users |
+| Adafruit Matrix Portal S3 (ESP32-S3) | ~$20 + panel | No soldering, low power — see [Matrix Portal guide](docs/MATRIX_PORTAL_SETUP.md) |
+
+## Running on an Adafruit Matrix Portal (ESP32-S3 or M4)
+
+Prefer a microcontroller board to a Pi? The `matrix-portal/` firmware runs the same
+modes on an Adafruit **Matrix Portal S3** or **M4** (CircuitPython), with an optional
+`companion/` server for album art and the web dashboard. See
+**[docs/MATRIX_PORTAL_SETUP.md](docs/MATRIX_PORTAL_SETUP.md)**.
 
 ## Quick Start
 

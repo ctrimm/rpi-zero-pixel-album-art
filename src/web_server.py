@@ -233,6 +233,12 @@ class WebServer:
                 self.logger.error(f"Error clearing display: {e}")
                 return jsonify({'error': str(e)}), 500
 
+        @self.flask_app.route('/api/admin/schema')
+        def admin_schema():
+            """The admin page uses its built-in Pi schema (other servers,
+            like the Matrix Portal companion, return their own here)."""
+            return jsonify({})
+
         @self.flask_app.route('/api/admin/config', methods=['GET'])
         @self._login_required
         def get_config():

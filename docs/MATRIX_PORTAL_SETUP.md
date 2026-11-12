@@ -1,331 +1,199 @@
-# Matrix Portal M4 Setup Guide
+# Matrix Portal Setup Guide (S3 and M4)
 
-> **Branch:** `claude/port-matrix-portal-LFL6w`
-> **Hardware:** [Adafruit Matrix Portal M4 — ID:4745](https://www.adafruit.com/product/4745)
-> **Display:** 64×64 HUB75 RGB LED Matrix Panel
+> **Hardware:** [Adafruit Matrix Portal S3 — ID:5778](https://www.adafruit.com/product/5778) *or*
+> [Matrix Portal M4 — ID:4745](https://www.adafruit.com/product/4745), plus a 64×64 HUB75 RGB LED panel.
+
+The same firmware runs on both boards and detects which one it's on.
+
+**Which one do I have?** Look at the back of the board, or plug it in and check the
+drive name / `boot_out.txt` on `CIRCUITPY`. If you bought it from Adafruit in the last
+couple of years it's most likely the **S3** (a single ESP32-S3 chip with a little
+metal-can WiFi module). The older **M4** has two chips: an ATSAMD51 plus an ESP32
+WiFi co-processor.
+
+| | Matrix Portal S3 | Matrix Portal M4 |
+|---|---|---|
+| Main chip | ESP32-S3 (WiFi built in) | SAMD51 + ESP32 WiFi co-processor |
+| RAM | 512 KB + 2 MB PSRAM | 192 KB |
+| Album art without companion | ✅ decoded on the board | ❌ text only |
+| Colour depth | 6 bits | 4 bits (RAM) |
+| Live scores without companion | ✅ | ✅ (small ESPN team feed) |
 
 ---
 
 ## What's in this port
 
-| Feature | Status | Notes |
-|---|---|---|
-| Album art display | ✅ | Requires companion for JPEG→BMP conversion |
-| Scrolling artist / track | ✅ | |
-| Weather (current + 3-day) | ✅ | Direct OWM API or via companion |
-| Sports scores | ✅ | Direct ESPN API (no key needed) |
-| Clock | ✅ | NTP-synced |
-| Pipes screensaver | ✅ | |
-| DVD logo screensaver | ✅ | Rainbow color on bounce |
-| Mode schedule | ✅ | `settings.toml` |
-| Web control panel | ✅ | Served by desktop companion |
-| Spotify OAuth | ✅ | Handled by desktop companion |
-
----
-
-## Hardware needed
-
-- Adafruit Matrix Portal M4 (ID:4745)
-- 64×64 HUB75 RGB LED matrix panel (P3 pitch works great indoors)
-- 5V 4A+ power supply (matrix requires its own power — **not** USB)
-- USB-C cable (for programming / serial)
+| Feature | Notes |
+|---|---|
+| Album art + scrolling artist/track + progress bar | Companion (both boards) or standalone on the S3 |
+| Automatic mode switching | Album art when music starts, clock when it stops. A mode you pick by hand stays until music starts again — same rules as the Pi version |
+| Weather (current + 3-day) | Direct OpenWeatherMap or via the companion |
+| Sports scores | Live / final / upcoming, team colours and records (ESPN, no key) |
+| Clock | Digital or analog, 12h or 24h, NTP-synced |
+| Screensavers | Pipes and DVD logo |
+| Brightness | Real dimming (software), night schedule, 0 = panel off |
+| Web dashboard + admin panel | Served by the companion — same UI as the Pi version |
+| Test pattern / clear | From the dashboard |
+| Watchdog, WiFi auto-reconnect, last-good caching | For an always-on display |
 
 ---
 
 ## Part 1 — Install CircuitPython
 
-1. Download the latest **CircuitPython 8.x** UF2 for Matrix Portal M4 from  
-   [circuitpython.org/board/adafruit_matrixportal_m4](https://circuitpython.org/board/adafruit_matrixportal_m4)
+1. Download the latest stable **CircuitPython 9.x (or newer)** `.uf2` for your board:
+   - S3: [circuitpython.org/board/adafruit_matrixportal_s3](https://circuitpython.org/board/adafruit_matrixportal_s3/)
+   - M4: [circuitpython.org/board/matrixportal_m4](https://circuitpython.org/board/matrixportal_m4/)
+2. Double-tap the **RESET** button — the board mounts as a drive ending in `BOOT`.
+3. Drag the `.uf2` onto that drive. The board reboots and mounts as `CIRCUITPY`.
 
-2. Hold the **RESET** button, then double-tap it quickly — the board mounts as `MATRIXBOOT`.
+## Part 2 — Install libraries
 
-3. Drag the `.uf2` file onto `MATRIXBOOT`. The board reboots and mounts as `CIRCUITPY`.
-
----
-
-## Part 2 — Install CircuitPython libraries
-
-Download the **CircuitPython 8.x library bundle** from  
-[circuitpython.org/libraries](https://circuitpython.org/libraries)
-
-### Easiest: use `circup` (recommended)
-
-`circup` installs exactly the right library versions for your board with one
-command — far less error-prone than copying folders from the bundle by hand:
+Easiest with [`circup`](https://github.com/adafruit/circup), which picks versions
+matching your CircuitPython:
 
 ```bash
 pip3 install circup
-# With the board plugged in (mounted as CIRCUITPY):
-circup install adafruit_display_text adafruit_imageload adafruit_esp32spi \
-               adafruit_requests adafruit_datetime
+# With the board plugged in:
+circup install adafruit_display_text adafruit_imageload adafruit_requests
+circup install adafruit_esp32spi        # M4 only
 ```
 
-To update everything later: `circup update`.
+Or copy those folders/files from the matching
+[library bundle](https://circuitpython.org/libraries) into `CIRCUITPY/lib/`.
 
-### Manual alternative
+## Part 3 — Copy the firmware
 
-If you'd rather not use `circup`, copy these from the
-[CircuitPython 8.x library bundle](https://circuitpython.org/libraries) into
-`CIRCUITPY/lib/`:
-
-```
-adafruit_display_text/
-adafruit_imageload/
-adafruit_esp32spi/
-adafruit_requests.mpy
-adafruit_datetime.mpy
-```
-
----
-
-## Part 3 — Copy project files
-
-Copy the contents of `matrix-portal/` from this repo onto your `CIRCUITPY` drive:
+Copy everything in `matrix-portal/` to the `CIRCUITPY` drive:
 
 ```
 CIRCUITPY/
 ├── boot.py
 ├── code.py
-├── settings.toml          ← fill in your values
+├── settings.toml          ← fill in your values (Part 4)
 ├── modes/
-│   ├── clock_mode.py
-│   ├── music_mode.py
-│   ├── weather_mode.py
-│   ├── sports_mode.py
-│   └── screensaver_mode.py
 └── utils/
-    ├── display_helper.py
-    ├── network_helper.py
-    └── storage_helper.py
 ```
 
----
+> `boot.py` makes the drive writable *by the firmware* (for the last-good cache), so it
+> becomes read-only on your computer. To edit files again, **hold the UP button while
+> plugging in USB**.
 
 ## Part 4 — Configure `settings.toml`
 
-Open `CIRCUITPY/settings.toml` and fill in your values:
+Fill in WiFi and pick **one** way to get Spotify data:
 
-```toml
-CIRCUITPY_WIFI_SSID = "YourNetwork"
-CIRCUITPY_WIFI_PASSWORD = "YourPassword"
+- **With the companion (recommended):** set `COMPANION_URL` (Part 5). The companion
+  handles Spotify, weather and sports; you only need WiFi on the board.
+- **Standalone:** leave `COMPANION_URL` empty and set `SPOTIFY_CLIENT_ID`,
+  `SPOTIFY_CLIENT_SECRET` and `SPOTIFY_REFRESH_TOKEN` (run `python companion.py --auth`
+  once on any computer — it prints the refresh token), plus `OPENWEATHER_API_KEY` for weather.
 
-# Get these from https://developer.spotify.com/dashboard
-SPOTIFY_CLIENT_ID = "abc123..."
-SPOTIFY_CLIENT_SECRET = "def456..."
-SPOTIFY_REFRESH_TOKEN = ""        # filled in after running companion --auth
+The file is commented; the useful extras:
 
-OPENWEATHER_API_KEY = ""          # https://openweathermap.org/api (free tier)
-WEATHER_LOCATION = "Chicago,US"
-WEATHER_UNITS = "imperial"        # or "metric"
+| Setting | Default | |
+|---|---|---|
+| `CLOCK_STYLE` | `digital` | or `analog` |
+| `TIME_FORMAT` | `12h` | or `24h` |
+| `AUTO_SWITCH` | `1` | album art when music starts, `FALLBACK_MODE` when it stops |
+| `FALLBACK_MODE` | `clock` | any mode |
+| `BRIGHTNESS_SCHEDULE` | — | e.g. `"07:00=60,22:00=15,01:00=0"` (0 = off) |
+| `MODE_SCHEDULE` | — | e.g. `"07:00=clock,22:00=screensaver"` |
+| `COMPANION_POLL_INTERVAL` | `3` | seconds |
 
-ESPN_LEAGUE = "NBA"               # NFL, NBA, MLB, NHL
-ESPN_TEAM = "CHI"                 # team abbreviation
+Keep comments on their own lines in `settings.toml`.
 
-BRIGHTNESS = 50
-DEFAULT_MODE = "music"            # music, weather, sports, clock, screensaver
+## Part 5 — Run the companion
 
-# Your desktop companion's local IP + port (see Part 5)
-COMPANION_URL = "http://192.168.1.100:5001"
-
-TIMEZONE_OFFSET = -6              # hours from UTC (-5=EST, -6=CST, -7=MST, -8=PST)
-SCREENSAVER_TYPE = "both"         # pipes, dvd, or both
-
-# Optional mode schedule — comment out to disable
-# MODE_SCHEDULE = "07:00=clock,09:00=music,22:30=screensaver"
-
-# Optional night dimming — bright by day, dim after 10pm
-# BRIGHTNESS_SCHEDULE = "07:00=60,22:00=15"
-
-ENABLE_WATCHDOG = 1               # auto-reboot if the firmware hangs (1=on, 0=off)
-```
-
-### Notes on the newer options
-
-- **`BRIGHTNESS_SCHEDULE`** — `HH:MM=PERCENT` pairs. The panel dims/brightens at
-  each boundary; you can still nudge brightness with the DOWN button or the web
-  UI in between, and it sticks until the next scheduled change.
-- **`ENABLE_WATCHDOG`** — a hardware watchdog reboots the board if it ever wedges
-  (e.g. a stuck network stack). Recommended for an always-on display.
-
----
-
-## Part 5 — Run the desktop companion
-
-The companion runs on your Mac/PC/Linux machine and handles:
-- Spotify OAuth (full browser-based flow)
-- Resizing + converting album art to 64×64 BMP for the Matrix Portal
-- Web control panel at `http://localhost:5001`
-- Proxying weather and sports data (optional)
-
-### Install companion dependencies
+The companion runs on any always-on computer on your network — **a Raspberry Pi works
+great**, as does a Mac/PC/Linux box. It reuses the Pi app's code in `src/`.
 
 ```bash
 cd companion
 python3 -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+python companion.py               # first run creates companion_config.json
 ```
 
-### First-time Spotify auth
-
-1. Go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard)
-2. Create an app, add `http://127.0.0.1:8888/callback` as a Redirect URI
-3. Copy your Client ID and Client Secret into `companion/companion_config.json`  
-   (the file is created automatically on first run — run the server once, then edit it)
-4. Run:
+1. Open **http://localhost:5001/admin** (login `admin` / `admin` — change it under
+   *Security*) and enter your Spotify **Client ID** and **secret** (from
+   [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard), with
+   redirect URI `http://127.0.0.1:8888/callback`), weather key, team, etc.
+2. Sign in to Spotify once:
    ```bash
    python companion.py --auth
    ```
-   Follow the prompts, paste the redirect URL. A token is saved to `.spotify_token.json`.
+   On a machine without a browser (e.g. a headless Pi) it prints a URL: open it on
+   your phone, sign in, and paste the `127.0.0.1:8888/...` address you land on back
+   into the terminal. The running companion connects within a minute.
+3. Set `COMPANION_URL = "http://<companion-ip>:5001"` on the board.
 
-### Run the companion
+Auto-start on boot/login: `bash services/install_service.sh` (launchd on macOS,
+systemd user service on Linux; run `loginctl enable-linger $USER` on a Pi).
 
-```bash
-python companion.py
-# or specify a port:
-python companion.py --port 5001
-```
+Optional: `pip install zeroconf` advertises `http://matrixportal-companion.local:5001`
+so you don't need a fixed IP (reliable on the S3; hit-or-miss on the M4).
 
-Find your machine's local IP (`ifconfig` / `ipconfig`) and set `COMPANION_URL` in `settings.toml`.
-
-### Keep the companion running (auto-start on login/boot)
-
-So you don't have to start it by hand every time:
-
-```bash
-cd companion
-bash services/install_service.sh
-```
-
-This installs a **launchd agent** on macOS or a **systemd user service** on Linux
-that starts the companion automatically and restarts it if it crashes. (On Linux,
-`loginctl enable-linger $USER` keeps it running even when you're logged out.)
-
-### Optional: find the companion by name instead of IP (mDNS)
-
-If you `pip install zeroconf` in the companion's venv, it advertises itself as
-`matrixportal-companion.local`. You can then set:
-
-```toml
-COMPANION_URL = "http://matrixportal-companion.local:5001"
-```
-
-and never worry about your computer's IP changing. (mDNS resolution is reliable
-on the S3 board's native WiFi; on the M4's ESP32 co-processor it can be hit or
-miss — if music art stops working, fall back to the numeric IP.)
-
-Open **http://localhost:5001** in your browser for the web control panel.
-
----
+**Dashboard:** `http://<companion-ip>:5001/` — mode buttons, brightness, now playing,
+test pattern. **Admin:** `/admin`.
 
 ## Part 6 — Power on
 
-1. Connect the matrix panel to the Matrix Portal (the HUB75 connector goes directly on the back).
-2. Connect the **external 5V power supply** to the matrix panel's power connector — **not** through the Matrix Portal's USB.
-3. Connect USB-C to your computer or a USB charger for the Matrix Portal's logic power.
-4. The Matrix Portal boots, connects to WiFi, syncs the clock, and starts the default mode.
+1. Plug the panel's HUB75 connector into the board and screw down the power terminals.
+2. Power the **panel** from a 5V 4A+ supply (not USB).
+3. Power the board via USB-C. It connects to WiFi, syncs the clock and starts.
 
 ---
 
-## Modes
-
-| Mode | Description |
-|---|---|
-| `music` | Album art + scrolling artist/track. Requires companion + Spotify. |
-| `weather` | Current conditions + 3-day forecast. Requires OWM API key. |
-| `sports` | Live scores for your team. No API key needed. |
-| `clock` | Digital clock + date. Works fully offline. |
-| `screensaver` | Pipes and/or DVD logo. Works fully offline. |
-
-Switch modes from the web control panel at `http://<companion-ip>:5001/`.
-
-The **music** screen also shows a now-playing progress bar along the bottom and
-keeps the scrolling artist/track readable with a dim band behind the text.
-
----
-
-## On-device controls (buttons)
-
-No phone needed — the two buttons on the Matrix Portal work standalone:
+## Buttons
 
 | Button | Action |
 |---|---|
-| **UP** | Cycle to the next mode (music → weather → sports → clock → screensaver) |
-| **DOWN** | Step brightness (10 → 25 → 50 → 75 → 100 → 10 %) |
+| **UP** | Next mode (music → weather → sports → clock → screensaver) — counts as picking by hand |
+| **DOWN** | Brightness: off → 10 → 25 → 50 → 75 → 100 % |
 
-> Holding **UP** while plugging in USB still drops to file-editing mode (the drive
-> becomes writable from your computer) — that's handled by `boot.py` before the
-> firmware starts, so it doesn't conflict with the in-app button actions.
+Changes made with the buttons stick: the companion only overrides them when you change
+something in the web UI.
 
----
+## How brightness works
 
-## Reliability (always-on display)
+CircuitPython's LED matrix driver can only switch the panel on or off (any brightness
+above 0 is full brightness). So the firmware dims in software: every colour on screen is
+scaled to the brightness level, including album art. Very low levels lose some colour
+detail, especially on the M4's 4-bit colour.
 
-This build is meant to run unattended on a wall:
+## Reliability
 
-- **Watchdog** — if the firmware ever hangs, the board auto-reboots (toggle with
-  `ENABLE_WATCHDOG`).
-- **WiFi auto-reconnect** — if your network blips, it reconnects on its own
-  instead of silently going dark.
-- **Last-good caching** — the most recent album art, weather, and scores are
-  saved to flash, so after a reboot or power cut the panel shows real content
-  immediately instead of placeholders while it reconnects.
-- **Robust time sync** — falls back to a second time source if the primary is
-  down, so the clock stays correct.
-
----
-
-## Offline operation
-
-If you don't want to use the companion (or have no computer running), the Matrix Portal can:
-- Show the **clock** without any network (after initial NTP sync)
-- Show **screensavers** without any network
-- Show **weather** and **sports** directly (no companion needed — set API keys in `settings.toml`)
-- Show **music** text-only (no album art — requires Spotify credentials in `settings.toml`)
-
-Set `COMPANION_URL = ""` to run fully standalone.
-
----
+- **Watchdog** reboots the board if the firmware hangs (`ENABLE_WATCHDOG`).
+- **WiFi auto-reconnect** every 30 s if the link drops.
+- **Last-good cache**: album art, track, weather and scores are saved to flash so a
+  reboot shows real content immediately. To protect the flash (it has no wear
+  levelling), files are only written when their content changes and at most once every
+  15 minutes each.
+- **Time sync** from two sources, refreshed every 6 hours.
 
 ## Troubleshooting
 
 | Problem | Fix |
 |---|---|
-| Display is dim or flickering | Check the external 5V power supply — needs at least 4A for a 64×64 panel |
-| WiFi won't connect | Verify SSID/password in `settings.toml`; 2.4GHz only |
-| `MemoryError` | The device recovers automatically and switches to clock mode. File a GitHub issue if persistent. |
-| Album art not showing | Confirm companion is running and `COMPANION_URL` is correct; check companion logs |
-| Time is wrong | Check `TIMEZONE_OFFSET` in `settings.toml` |
-| Serial output | Connect via USB and open a serial terminal at 115200 baud |
+| Only half the panel lights / image repeats | Use this firmware (it drives all 5 address lines). |
+| Panel dim or flickery | Power supply: 5V, 4A+ for 64×64 |
+| "No WiFi" | Check SSID/password; 2.4 GHz only |
+| "Not set up" on the music screen | Set `COMPANION_URL` or the `SPOTIFY_*` settings |
+| No album art (M4, no companion) | Expected — the M4 can't decode JPEGs. Use the companion |
+| Dashboard says "Board offline" | Check `COMPANION_URL` on the board and that both are on the same network |
+| Wrong time | `TIMEZONE_OFFSET` |
+| `MemoryError` on the M4 | It recovers to the clock automatically. Use the companion for weather/sports, or lower `BIT_DEPTH` |
 
-For serial output on Mac/Linux:
-```bash
-screen /dev/tty.usbmodem* 115200
-# or
-ls /dev/tty.usbmodem* && cat /dev/tty.usbmodem*
-```
-
----
-
-## Memory tips
-
-The SAMD51 has 512KB RAM. If you hit `MemoryError`:
-- Set `DEFAULT_MODE = "clock"` and switch modes manually via the web UI
-- Reduce `bit_depth` from `4` to `3` in `code.py` (slightly less color depth)
-- Disable modes you don't use by commenting out their constructors in `code.py`
-
----
+Serial console (prints what the board is doing): `screen /dev/tty.usbmodem* 115200`
+(Mac/Linux) or the Mu editor / [code.circuitpython.org](https://code.circuitpython.org).
 
 ## Differences from the Raspberry Pi version
 
-| Pi Version | Matrix Portal Version |
+| Pi | Matrix Portal |
 |---|---|
-| Full Python (CPython) | CircuitPython 8 |
-| `rpi-rgb-led-matrix` | `rgbmatrix` (built-in to CircuitPython) |
-| Flask web server on device | Flask companion on desktop |
-| Full Spotify OAuth on device | OAuth on companion, token stored in `settings.toml` |
-| `spotipy` library | Direct Spotify API calls |
-| `pyowm` library | Direct OpenWeatherMap API calls |
-| `espn-api` library | Direct ESPN API calls |
-| Threading | Single-threaded with cooperative updates |
-| LED simulator (dev mode) | Use REPL / serial output for debugging |
+| Python on Linux | CircuitPython on a microcontroller |
+| Web UI on the Pi | Web UI on the companion |
+| Spotify login on the Pi | Login on the companion (or a refresh token in `settings.toml`) |
+| Hardware brightness | Software dimming |
+| Weather on the 8s | Not available |

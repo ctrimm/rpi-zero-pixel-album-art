@@ -37,6 +37,11 @@ except ImportError:
     _NATIVE_WIFI = False
 
 
+# Which Matrix Portal this is: the S3 has native WiFi (ESP32-S3 is the main
+# chip); the M4 talks to an ESP32 WiFi co-processor over SPI.
+BOARD_NAME = "S3" if _NATIVE_WIFI else "M4"
+
+
 class NetworkHelper:
     """Handles WiFi connection and HTTP requests for both M4 (ESP32 SPI) and S3 boards."""
 
@@ -185,70 +190,54 @@ class NetworkHelper:
         except (KeyError, ValueError, IndexError):
             return None
 
-    def get_json(self, url, headers=None, retries=2):
-        if not self.requests:
-            return None
-        for attempt in range(retries):
-            try:
-                _feed_watchdog()
-                resp = self.requests.get(url, headers=self._headers(headers))
-                data = resp.json()
-                resp.close()
-                return data
-            except Exception as e:
-                print(f"GET JSON failed ({url}): {e}")
-                if attempt < retries - 1:
-                    time.sleep(1)
-        return None
+    def request(self, method, url, headers=None, data=None, json_body=None,
+                want="json", retries=2):
+        """Make a request and return (status_code, payload).
 
-    def post_json(self, url, json_data=None, headers=None):
-        if not self.requests:
-            return None
-        try:
-            resp = self.requests.post(url, json=json_data, headers=headers)
-            data = resp.json()
-            resp.close()
-            return data
-        except Exception as e:
-            print(f"POST JSON failed ({url}): {e}")
-        return None
-
-    def get_bytes(self, url, headers=None, retries=2):
-        if not self.requests:
-            return None
-        for attempt in range(retries):
-            try:
-                _feed_watchdog()
-                resp = self.requests.get(url, headers=self._headers(headers))
-                data = resp.content
-                resp.close()
-                return data
-            except Exception as e:
-                print(f"GET bytes failed ({url}): {e}")
-                if attempt < retries - 1:
-                    time.sleep(1)
-        return None
-
-    def save_url_to_file(self, url, filepath, headers=None):
-        """Download a URL and save it to a file on the CIRCUITPY filesystem.
-
-        Uses resp.content (loads into RAM) rather than iter_content because
-        adafruit_requests does not guarantee iter_content across library versions.
-        A 64x64 256-color BMP is ~5 KB, well within the M4's RAM budget.
+        payload is parsed JSON (want="json"), raw bytes (want="bytes") or None
+        for empty/error responses. Only network failures are retried: an HTTP
+        status like 204 (Spotify's "nothing playing") or 404 is a real answer,
+        so it returns immediately instead of retrying and sleeping, which used
+        to cost an extra request plus a 1s freeze on every idle Spotify poll.
+        Returns (None, None) if the request couldn't be made at all.
         """
         if not self.requests:
-            return False
-        try:
-            _feed_watchdog()
-            resp = self.requests.get(url, headers=self._headers(headers))
-            data = resp.content
-            resp.close()
-            with open(filepath, "wb") as f:
-                f.write(data)
-            return True
-        except Exception as e:
-            print(f"Save URL to file failed: {e}")
-        return False
+            return (None, None)
+        for attempt in range(retries):
+            resp = None
+            try:
+                _feed_watchdog()
+                kwargs = {"headers": self._headers(headers)}
+                if data is not None:
+                    kwargs["data"] = data
+                if json_body is not None:
+                    kwargs["json"] = json_body
+                resp = self.requests.request(method, url, **kwargs)
+                status = resp.status_code
+                payload = None
+                if 200 <= status < 300 and status != 204:
+                    payload = resp.json() if want == "json" else resp.content
+                return (status, payload)
+            except Exception as e:
+                print(f"{method} {url} failed: {e}")
+                if attempt < retries - 1:
+                    time.sleep(0.5)
+            finally:
+                if resp is not None:
+                    try:
+                        resp.close()
+                    except Exception:
+                        pass
+        return (None, None)
+
+    def get_json(self, url, headers=None, retries=2):
+        return self.request("GET", url, headers=headers, retries=retries)[1]
+
+    def post_json(self, url, json_data=None, headers=None):
+        return self.request("POST", url, headers=headers, json_body=json_data, retries=1)[1]
+
+    def get_bytes(self, url, headers=None, retries=2):
+        return self.request("GET", url, headers=headers, want="bytes", retries=retries)[1]
 
     @property
     def connected(self):

@@ -42,9 +42,15 @@ def make_auth_manager(spotify_config, open_browser=None):
     """Build the SpotifyOAuth manager shared by the app and spotify_auth.py."""
     if open_browser is None:
         open_browser = browser_available()
-    token_dir = cache_dir()
-    token_dir.mkdir(parents=True, exist_ok=True)
-    cache_handler = CacheFileHandler(cache_path=str(token_dir / 'spotify_token_cache'))
+    token_path = spotify_config.get('token_cache_path')
+    if token_path:
+        from pathlib import Path
+        Path(token_path).parent.mkdir(parents=True, exist_ok=True)
+    else:
+        token_dir = cache_dir()
+        token_dir.mkdir(parents=True, exist_ok=True)
+        token_path = token_dir / 'spotify_token_cache'
+    cache_handler = CacheFileHandler(cache_path=str(token_path))
     return SpotifyOAuth(
         client_id=spotify_config['client_id'],
         client_secret=spotify_config['client_secret'],

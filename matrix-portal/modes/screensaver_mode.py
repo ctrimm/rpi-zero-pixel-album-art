@@ -5,11 +5,15 @@ import time
 import random
 import gc
 
-from utils.display_helper import PALETTE_16, make_palette
+from utils.display_helper import PALETTE_16, make_palette, set_palette_color
 
 W = 64
 H = 64
 NUM_COLORS = len(PALETTE_16)  # 16
+
+# 3x5 glyphs for the logo lettering (bit 2 = left column)
+_GLYPH_D = (0b110, 0b101, 0b101, 0b101, 0b110)
+_GLYPH_V = (0b101, 0b101, 0b101, 0b010, 0b010)
 
 # Pipe directions
 _UP, _DOWN, _LEFT, _RIGHT = 0, 1, 2, 3
@@ -60,15 +64,35 @@ class ScreensaverMode:
         self._dvd_h = 8
         self._last_dvd_tick = 0
         self._dvd_tick_interval = 0.04
+        self._dvd_grid = None
+        self._dvd_palette = None
 
     def on_enter(self):
         gc.collect()
-        self._palette = make_palette(PALETTE_16)
+        # Index 0 must be black: the bitmap is cleared to 0. (PALETTE_16[0] is red,
+        # which used to make the whole screensaver background solid red.)
+        self._palette = make_palette([0x000000] + PALETTE_16[1:])
         self._bitmap = displayio.Bitmap(W, H, NUM_COLORS)
         self._tile_grid = displayio.TileGrid(self._bitmap, pixel_shader=self._palette)
 
         self._group = displayio.Group()
         self._group.append(self._tile_grid)
+
+        # DVD logo: a small 16x8 bitmap that is *moved* each frame (TileGrid
+        # x/y), instead of erasing and redrawing ~256 pixels from Python.
+        # Index 0 = logo colour, 1 = black lettering.
+        self._dvd_palette = make_palette([PALETTE_16[0], 0x000000])
+        logo = displayio.Bitmap(self._dvd_w, self._dvd_h, 2)
+        tx = (self._dvd_w - 11) // 2
+        ty = (self._dvd_h - 5) // 2
+        for i, glyph in enumerate((_GLYPH_D, _GLYPH_V, _GLYPH_D)):
+            for row, bits in enumerate(glyph):
+                for col in range(3):
+                    if bits & (4 >> col):
+                        logo[tx + i * 4 + col, ty + row] = 1
+        self._dvd_grid = displayio.TileGrid(logo, pixel_shader=self._dvd_palette)
+        self._dvd_grid.hidden = True
+        self._group.append(self._dvd_grid)
         self.display.root_group = self._group
 
         # Pick first screensaver
@@ -80,6 +104,8 @@ class ScreensaverMode:
         self._switch_at = time.monotonic() + self._switch_interval
 
     def on_exit(self):
+        self._dvd_grid = None
+        self._dvd_palette = None
         self._group = None
         self._bitmap = None
         self._palette = None
@@ -108,6 +134,8 @@ class ScreensaverMode:
 
     def _start_pipes(self):
         self._current = "pipes"
+        if self._dvd_grid is not None:
+            self._dvd_grid.hidden = True
         self._clear_bitmap()
         self._pipes = []
         self._frame_count = 0
@@ -119,7 +147,7 @@ class ScreensaverMode:
             "x":     random.randint(0, W - 1),
             "y":     random.randint(0, H - 1),
             "dir":   random.randint(0, 3),
-            "color": random.randint(0, NUM_COLORS - 1),
+            "color": random.randint(1, NUM_COLORS - 1),
             "len":   0,
         }
 
@@ -170,80 +198,52 @@ class ScreensaverMode:
         self._dvd_y = float(H // 2)
         self._dvd_dx = 0.8
         self._dvd_dy = 0.6
-        self._dvd_color = random.randint(0, NUM_COLORS - 1)
+        self._dvd_color = random.randint(1, NUM_COLORS - 1)
+        set_palette_color(self._dvd_palette, 0, PALETTE_16[self._dvd_color])
+        self._dvd_grid.hidden = False
+        self._place_dvd()
 
     def _tick_dvd(self, now):
         if now - self._last_dvd_tick < self._dvd_tick_interval:
             return
         self._last_dvd_tick = now
 
-        # Erase previous position
-        self._draw_dvd_rect(int(self._dvd_x), int(self._dvd_y), 0)
-
         self._dvd_x += self._dvd_dx
         self._dvd_y += self._dvd_dy
 
-        bounced = False
+        hit_x = hit_y = False
         if self._dvd_x <= 0:
             self._dvd_x = 0
             self._dvd_dx = abs(self._dvd_dx)
-            bounced = True
+            hit_x = True
         elif self._dvd_x + self._dvd_w >= W:
             self._dvd_x = W - self._dvd_w
             self._dvd_dx = -abs(self._dvd_dx)
-            bounced = True
+            hit_x = True
 
         if self._dvd_y <= 0:
             self._dvd_y = 0
             self._dvd_dy = abs(self._dvd_dy)
-            bounced = True
+            hit_y = True
         elif self._dvd_y + self._dvd_h >= H:
             self._dvd_y = H - self._dvd_h
             self._dvd_dy = -abs(self._dvd_dy)
-            bounced = True
+            hit_y = True
 
-        if bounced:
-            # Change color on bounce, rainbow-cycle through palette
-            self._dvd_color = (self._dvd_color + 1) % NUM_COLORS
+        if hit_x or hit_y:
+            # New colour on every bounce (skip index 0 = black-ish red repeat)
+            self._dvd_color = self._dvd_color % (NUM_COLORS - 1) + 1
+            set_palette_color(self._dvd_palette, 0, PALETTE_16[self._dvd_color])
 
-        self._draw_dvd_rect(int(self._dvd_x), int(self._dvd_y), self._dvd_color)
+        self._place_dvd()
 
-    def _draw_dvd_rect(self, x, y, color_index):
-        """Draw or erase the DVD rectangle (filled)."""
-        bmp = self._bitmap
-        x_end = min(x + self._dvd_w, W)
-        y_end = min(y + self._dvd_h, H)
-        for py in range(max(0, y), y_end):
-            for px in range(max(0, x), x_end):
-                bmp[px, py] = color_index
-
-        # Draw "DVD" text pixels (crude 3x5 chars) inside if erasing
-        if color_index != 0:
-            self._draw_dvd_text(x + 1, y + 2, color_index)
-
-    def _draw_dvd_text(self, x, y, bg_color):
-        """Draw 'DVD' in 1-pixel dots as a simple logo mark (inverted)."""
-        # Simple 3-char monogram using pixel dots — just a visual marker
-        dots = [
-            # D
-            (0,0),(0,1),(0,2),(0,3),(0,4),
-            (1,0),(1,4),(2,1),(2,2),(2,3),
-            # V
-            (4,0),(4,1),(5,2),(5,3),(6,4),(7,3),(7,2),(8,1),(8,0),
-            # D
-            (10,0),(10,1),(10,2),(10,3),(10,4),
-            (11,0),(11,4),(12,1),(12,2),(12,3),
-        ]
-        # Use black (index 0) for text pixels (contrast against colored bg)
-        text_color = 0
-        bmp = self._bitmap
-        for dx, dy in dots:
-            px, py = x + dx, y + dy
-            if 0 <= px < W and 0 <= py < H:
-                if bg_color == 0:
-                    pass  # erasing — don't draw text
-                else:
-                    bmp[px, py] = text_color
+    def _place_dvd(self):
+        # Moving a TileGrid is O(1) - no pixel writes at all
+        x, y = int(self._dvd_x), int(self._dvd_y)
+        if self._dvd_grid.x != x:
+            self._dvd_grid.x = x
+        if self._dvd_grid.y != y:
+            self._dvd_grid.y = y
 
     # ------------------------------------------------------------------
     # Utilities

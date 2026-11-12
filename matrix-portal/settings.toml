@@ -1,50 +1,65 @@
-# Matrix Portal M4 Configuration
-# Copy this file to settings.toml on your CIRCUITPY drive
-# Run companion/companion.py on your desktop first to get a Spotify refresh token
+# Matrix Portal S3 / M4 configuration — copy to settings.toml on your CIRCUITPY drive.
+# The firmware detects which board it's on automatically.
 
-# WiFi
+# WiFi (2.4 GHz only)
 CIRCUITPY_WIFI_SSID = "your_wifi_ssid"
 CIRCUITPY_WIFI_PASSWORD = "your_wifi_password"
 
-# Spotify — get SPOTIFY_REFRESH_TOKEN by running: python companion/companion.py --auth
+# Companion URL, e.g. "http://192.168.1.100:5001" (see docs/MATRIX_PORTAL_SETUP.md).
+# Recommended: album art on the M4, the web dashboard, and less work for the board.
+# Leave empty to run standalone.
+COMPANION_URL = ""
+
+# Spotify without the companion (standalone). Get the refresh token by running
+# `python companion.py --auth` once on any computer - it prints it for you.
+# On the S3 this includes album art (decoded on the board); the M4 shows text only.
 SPOTIFY_CLIENT_ID = ""
 SPOTIFY_CLIENT_SECRET = ""
 SPOTIFY_REFRESH_TOKEN = ""
 
-# OpenWeatherMap (https://openweathermap.org/api)
+# OpenWeatherMap (https://openweathermap.org/api, free tier) — not needed with the companion
 OPENWEATHER_API_KEY = ""
 WEATHER_LOCATION = "New York,US"
 WEATHER_UNITS = "imperial"
 
-# Sports (ESPN API — no key needed)
+# Sports (ESPN, no key). Leagues: NFL NBA WNBA MLB NHL MLS NCAAF NCAAM
 ESPN_LEAGUE = "NBA"
 ESPN_TEAM = "LAL"
 
 # Display
+# 0 = off, 1-100
 BRIGHTNESS = 50
+# music, weather, sports, clock, screensaver
 DEFAULT_MODE = "music"
+# digital or analog
+CLOCK_STYLE = "digital"
+# 12h or 24h
+TIME_FORMAT = "12h"
+# pipes, dvd, or both (alternates)
+SCREENSAVER_TYPE = "both"
 
-# Desktop companion URL (e.g. "http://192.168.1.100:5001")
-# Required for album art and the web control panel
-# Leave empty to run without companion (album art disabled)
-COMPANION_URL = ""
+# Automatic switching (same rules as the Pi version): show album art when music
+# starts, FALLBACK_MODE when it stops. A mode you pick by hand stays until music
+# starts again. 1 = on, 0 = off.
+AUTO_SWITCH = 1
+FALLBACK_MODE = "clock"
 
 # Timezone offset from UTC in hours (e.g. -5 for EST, -8 for PST)
 TIMEZONE_OFFSET = -5
 
-# Screensaver: "pipes", "dvd", or "both" (alternates)
-SCREENSAVER_TYPE = "both"
-
-# Schedule: comma-separated list of "HH:MM=mode" entries
+# Schedule: comma-separated "HH:MM=mode" entries (ignored while a mode is picked by hand)
 # Example: "07:00=clock,09:00=music,22:00=screensaver"
 MODE_SCHEDULE = ""
 
-# Brightness schedule: comma-separated "HH:MM=PERCENT" entries (night dimming).
-# Example: "07:00=60,22:00=15" → 60% during the day, 15% after 10pm.
-# Leave empty to use a fixed BRIGHTNESS.
+# Night dimming: comma-separated "HH:MM=PERCENT" entries (0 = panel off)
+# Example: "07:00=60,22:00=15,01:00=0"
 BRIGHTNESS_SCHEDULE = ""
 
-# Hardware watchdog: reboot the board automatically if the firmware hangs.
-# 1 = enabled (recommended for an always-on display), 0 = disabled.
+# How often to check the companion (seconds). One small request each time.
+COMPANION_POLL_INTERVAL = 3
+
+# Hardware watchdog: reboot automatically if the firmware hangs. 1 = on, 0 = off.
 ENABLE_WATCHDOG = 1
 
+# Colour depth (1-6). Default: 6 on the S3, 4 on the M4 (less RAM).
+# BIT_DEPTH = 6

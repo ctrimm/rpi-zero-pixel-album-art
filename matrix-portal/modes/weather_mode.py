@@ -3,7 +3,7 @@ import displayio
 import time
 import gc
 
-from utils.display_helper import make_text_label, center_label, COLORS, ScrollingLabel
+from utils.display_helper import make_text_label, center_label, COLORS, ScrollingLabel, set_label_color
 from utils import storage_helper
 
 WEATHER_CACHE = "/cache_weather.json"
@@ -32,6 +32,12 @@ CONDITION_ICONS = {
     "Dust":         "  DUST ",
     "Tornado":      "TORNADO",
 }
+
+# Layout (label y = vertical centre of the text line)
+_TEMP_Y = 17
+_COND_Y = 34
+_FEELS_Y = 45
+_FORECAST_Y = 57
 
 UNIT_SYMBOL = {"imperial": "F", "metric": "C", "standard": "K"}
 
@@ -80,18 +86,18 @@ class WeatherMode:
         self._group.append(self._city_scroller.label)
 
         # Main temperature — big
-        self._temp_label = make_text_label("---°F", color=COLORS["white"], y=18, scale=2)
-        center_label(self._temp_label, y=18)
+        self._temp_label = make_text_label("", color=COLORS["white"], y=_TEMP_Y, scale=2)
+        center_label(self._temp_label, y=_TEMP_Y)
         self._group.append(self._temp_label)
 
         # Condition text
-        self._condition_label = make_text_label("Loading...", color=COLORS["gray"], y=34)
-        center_label(self._condition_label, y=34)
+        self._condition_label = make_text_label("Loading...", color=COLORS["gray"], y=_COND_Y)
+        center_label(self._condition_label, y=_COND_Y)
         self._group.append(self._condition_label)
 
         # Feels like
-        self._feels_label = make_text_label("Feels --°", color=COLORS["dim"], y=43)
-        center_label(self._feels_label, y=43)
+        self._feels_label = make_text_label("", color=COLORS["dim"], y=_FEELS_Y)
+        center_label(self._feels_label, y=_FEELS_Y)
         self._group.append(self._feels_label)
 
         # 3-day forecast row — one compact temperature per column.
@@ -100,7 +106,7 @@ class WeatherMode:
         self._forecast_labels = []
         positions = [3, 25, 47]
         for i, x in enumerate(positions):
-            lbl = make_text_label("--", color=COLORS["gray"], x=x, y=58, scale=1)
+            lbl = make_text_label("", color=COLORS["gray"], x=x, y=_FORECAST_Y, scale=1)
             self._forecast_labels.append(lbl)
             self._group.append(lbl)
 
@@ -142,7 +148,7 @@ class WeatherMode:
                 return
 
         if not self.api_key:
-            self._condition_label.text = "No API key"
+            self._show_message("No API key")
             return
 
         url = OWM_CURRENT_URL.format(
@@ -176,6 +182,16 @@ class WeatherMode:
             self._render(payload)
             storage_helper.save_json(WEATHER_CACHE, payload)
 
+    def _show_message(self, text):
+        """Show a single centred message instead of the weather lines."""
+        self._temp_label.text = ""
+        self._feels_label.text = ""
+        for lbl in self._forecast_labels:
+            lbl.text = ""
+        self._condition_label.text = text
+        set_label_color(self._condition_label, COLORS["gray"])
+        center_label(self._condition_label, y=32)
+
     def _render(self, data):
         unit_sym = UNIT_SYMBOL.get(self.units, "F")
 
@@ -193,14 +209,14 @@ class WeatherMode:
             icon_text = CONDITION_ICONS.get(main_cond, main_cond[:7].upper())
 
             self._temp_label.text = f"{int(temp):>3d}{chr(176)}{unit_sym}"
-            center_label(self._temp_label, y=18)
+            center_label(self._temp_label, y=_TEMP_Y)
 
             self._condition_label.text = icon_text
-            self._condition_label.color = _condition_color(main_cond)
-            center_label(self._condition_label, y=34)
+            set_label_color(self._condition_label, _condition_color(main_cond))
+            center_label(self._condition_label, y=_COND_Y)
 
             self._feels_label.text = f"Feels {int(feels)}{chr(176)}"
-            center_label(self._feels_label, y=43)
+            center_label(self._feels_label, y=_FEELS_Y)
 
             city_name = c.get("name", self.location.split(",")[0])
             self._city_scroller.set_text(city_name)
@@ -212,12 +228,12 @@ class WeatherMode:
             icon_text = CONDITION_ICONS.get(main_cond, main_cond[:7].upper())
 
             self._temp_label.text = f"{int(temp):>3d}{chr(176)}{unit_sym}"
-            center_label(self._temp_label, y=18)
+            center_label(self._temp_label, y=_TEMP_Y)
             self._condition_label.text = icon_text
-            self._condition_label.color = _condition_color(main_cond)
-            center_label(self._condition_label, y=34)
+            set_label_color(self._condition_label, _condition_color(main_cond))
+            center_label(self._condition_label, y=_COND_Y)
             self._feels_label.text = f"Feels {int(feels)}{chr(176)}"
-            center_label(self._feels_label, y=43)
+            center_label(self._feels_label, y=_FEELS_Y)
 
         # Forecast row — one temperature per column, colored by condition.
         forecast = data.get("forecast", [])
@@ -226,6 +242,6 @@ class WeatherMode:
                 f = forecast[i]
                 temp_val = f.get("temp", f.get("main", {}).get("temp", 0) if isinstance(f.get("main"), dict) else 0)
                 lbl.text = f"{int(temp_val)}{chr(176)}"
-                lbl.color = _condition_color(f.get("main", "Clear"))
+                set_label_color(lbl, _condition_color(f.get("main", "Clear")))
             else:
                 lbl.text = ""
