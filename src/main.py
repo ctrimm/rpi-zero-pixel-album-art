@@ -448,6 +448,10 @@ class SpotifyDisplayApp:
             if 'web_server' in new_config and self.web_server:
                 self.web_server.update_credentials(self.config['web_server'])
 
+            # Song/artist overlay on/off
+            if self.modes.get('music'):
+                self.modes['music'].configure(self.config)
+
             # Clock style/format changes
             self.modes['clock'] = ClockMode(self.display, self.config)
 
