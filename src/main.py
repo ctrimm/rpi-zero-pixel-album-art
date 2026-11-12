@@ -253,8 +253,9 @@ class SpotifyDisplayApp:
                 # This overrides all other modes during its display time
                 if self.weather_on_8s and self.weather_on_8s.enabled:
                     if self.weather_on_8s.update():
-                        # Weather on 8s is active and handled the update
-                        time.sleep(1)
+                        # Weather on the 8s owns the screen; ~10 fps for its
+                        # animated icons (frames are only pushed when they change)
+                        time.sleep(0.05)
                         continue
 
                 # PRIORITY 2: Check if we should auto-switch modes
