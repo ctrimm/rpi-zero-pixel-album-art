@@ -13,6 +13,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.image_processor import ImageProcessor
+from utils.runtime import mode_sleep
 
 
 class ClockMode:
@@ -48,11 +49,11 @@ class ClockMode:
             else:
                 self._display_digital_clock()
 
-            time.sleep(1)  # Update every second
+            mode_sleep(1)  # Update every second
 
         except Exception as e:
             self.logger.error(f"Error in clock mode update: {e}")
-            time.sleep(5)
+            mode_sleep(5)
 
     def _display_digital_clock(self):
         """Display current time and date in digital format"""
@@ -63,47 +64,32 @@ class ClockMode:
             font = ImageFont.load_default()
 
             now = datetime.now()
+            width, height = display_size
 
-            # Format time
+            def centered(text, y, fill):
+                bbox = draw.textbbox((0, 0), text, font=font)
+                draw.text(((width - (bbox[2] - bbox[0])) // 2 - bbox[0], y), text, font=font, fill=fill)
+
+            # Time on its own line; AM/PM goes on a second line so the time
+            # never runs off the 64px panel.
             if self.time_format == '12h':
-                if self.show_seconds:
-                    time_str = now.strftime('%I:%M:%S %p')
-                else:
-                    time_str = now.strftime('%I:%M %p')
-            else:  # 24h
-                if self.show_seconds:
-                    time_str = now.strftime('%H:%M:%S')
-                else:
-                    time_str = now.strftime('%H:%M')
-
-            # Draw time
-            bbox = draw.textbbox((0, 0), time_str, font=font)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
-
-            if self.show_date:
-                # Position time in upper portion
-                time_pos = ((display_size[0] - text_width) // 2, display_size[1] // 3)
+                fmt = '%I:%M:%S' if self.show_seconds else '%I:%M'
+                time_str = now.strftime(fmt).lstrip('0')
+                suffix = now.strftime('%p')
             else:
-                # Center time
-                time_pos = ((display_size[0] - text_width) // 2, (display_size[1] - text_height) // 2)
+                time_str = now.strftime('%H:%M:%S' if self.show_seconds else '%H:%M')
+                suffix = None
 
-            draw.text(time_pos, time_str, font=font, fill=self.color)
-
-            # Draw date if enabled
             if self.show_date:
-                date_str = now.strftime('%b %d')
-                bbox = draw.textbbox((0, 0), date_str, font=font)
-                text_width = bbox[2] - bbox[0]
-                date_pos = ((display_size[0] - text_width) // 2, display_size[1] * 2 // 3)
-                draw.text(date_pos, date_str, font=font, fill=self.color)
-
-                # Day of week
-                day_str = now.strftime('%A')[:3]  # Abbreviated day
-                bbox = draw.textbbox((0, 0), day_str, font=font)
-                text_width = bbox[2] - bbox[0]
-                day_pos = ((display_size[0] - text_width) // 2, display_size[1] // 2 + 5)
-                draw.text(day_pos, day_str, font=font, fill=(150, 150, 150))
+                centered(time_str, 8, self.color)
+                if suffix:
+                    centered(suffix, 20, (150, 150, 150))
+                centered(now.strftime('%a').upper(), 36, (150, 150, 150))
+                centered(now.strftime('%b %d').upper(), 48, self.color)
+            else:
+                centered(time_str, height // 2 - 10, self.color)
+                if suffix:
+                    centered(suffix, height // 2 + 4, (150, 150, 150))
 
             self.display.display_image(image)
 

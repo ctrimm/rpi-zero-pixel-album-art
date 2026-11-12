@@ -4,7 +4,13 @@
     "client_secret": "your_spotify_client_secret_here",
     "redirect_uri": "http://127.0.0.1:8888/callback",
     "scope": "user-read-currently-playing user-read-playback-state",
-    "update_interval": 10
+    "update_interval": 10,
+    "poll_max_interval": 10,
+    "poll_paused_interval": 20,
+    "poll_idle_interval": 30,
+    "poll_transition_interval": 2,
+    "poll_transition_window": 12,
+    "comment": "Adaptive polling (seconds): poll_max_interval = mid-song ceiling that catches manual skips; paused/idle slow down the poll rate; near a track's predicted end it polls every poll_transition_interval starting poll_transition_window seconds early so new album art appears almost instantly."
   },
   "display": {
     "rows": 64,
@@ -12,7 +18,8 @@
     "chain_length": 1,
     "parallel": 1,
     "brightness": 80,
-    "hardware_mapping": "regular",
+    "hardware_mapping": "adafruit-hat",
+    "hardware_mapping_comment": "adafruit-hat = Adafruit RGB Matrix Bonnet/HAT (recommended board). Use 'regular' for direct GPIO wiring, or 'adafruit-hat-pwm' if you did the bonnet's PWM solder mod. 64x64 panels on the Bonnet also need its 'E' address jumper soldered (pad 8 on most panels).",
     "gpio_slowdown": 2,
     "pwm_bits": 11,
     "pwm_lsb_nanoseconds": 130,
@@ -68,8 +75,7 @@
     "league": "NFL",
     "team": "GB",
     "update_interval": 60,
-    "show_scores_only_during_games": false,
-    "comment": "team codes: GB=Green Bay Packers, NO=New Orleans Saints, etc."
+    "comment": "Live scores from ESPN (no API key). league: NFL, NBA, WNBA, MLB, NHL, MLS, NCAAF, NCAAM. team = ESPN abbreviation, e.g. GB, NO, LAL, NYY. update_interval = seconds between refreshes during a live game."
   },
   "screensavers": {
     "pipes": {

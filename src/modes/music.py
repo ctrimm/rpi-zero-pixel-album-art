@@ -12,6 +12,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.image_processor import ImageProcessor
+from utils.runtime import mode_sleep
 
 
 class MusicMode:
@@ -34,9 +35,8 @@ class MusicMode:
 
         self.current_track_id = None
         self.last_displayed_track_id = None  # Track what's currently displayed
-        self.last_update = 0
-        self.update_interval = 5  # Check every 5 seconds
         self.first_update = True  # Flag for first update
+        self.last_frame = None  # The exact image we last pushed to the display
 
         # Display settings
         self.show_track_info = config.get('advanced', {}).get('show_track_info', True)
@@ -47,17 +47,16 @@ class MusicMode:
     def update(self):
         """Update music display"""
         try:
-            # Rate limiting (but skip on first update)
-            current_time = time.time()
-            if not self.first_update and current_time - self.last_update < self.update_interval:
-                time.sleep(1)
+            if self.spotify is None:
+                self._show_message("Spotify\nnot linked", (200, 120, 60))
+                self.last_displayed_track_id = None
+                mode_sleep(2)
                 return
 
-            self.last_update = current_time
-
-            # Get current track
-            # spotify_client now returns cached track during rate limiting,
-            # so we always get useful data (either fresh or cached)
+            # Ask every loop (~1s). The Spotify client owns the actual API
+            # cadence via adaptive polling and returns cached data between
+            # polls, so this is cheap and lets us pick up a track change within
+            # a second of the client detecting it.
             track_info = self.spotify.get_current_track(force=self.first_update)
             self.first_update = False  # Clear flag after first update
 
@@ -67,7 +66,7 @@ class MusicMode:
                 self._display_placeholder()
                 self.current_track_id = None
                 self.last_displayed_track_id = None
-                time.sleep(2)
+                mode_sleep(2)
                 return
 
             # Update current track ID
@@ -81,14 +80,18 @@ class MusicMode:
                 self.logger.debug(f"Displaying album art for: {track_info['track_name']}")
                 self._display_album_art(track_info)
                 self.last_displayed_track_id = track_info['track_id']
+            elif self.last_frame is not None and self.display.current_image is not self.last_frame:
+                # Something else drew over the album art (test pattern, clear,
+                # Weather on the 8s...). Put the cached art back.
+                self.display.display_image(self.last_frame)
 
             # Track is still playing - just sleep and check again later
             # The album art stays on screen continuously (no need to redraw)
-            time.sleep(1)
+            mode_sleep(1)
 
         except Exception as e:
             self.logger.error(f"Error in music mode update: {e}", exc_info=True)
-            time.sleep(5)
+            mode_sleep(5)
 
     def _display_album_art(self, track_info):
         """
@@ -113,6 +116,7 @@ class MusicMode:
 
             if processed_image:
                 self.display.display_image(processed_image)
+                self.last_frame = self.display.current_image
                 self.logger.debug(f"Displayed album art for: {track_info['track_name']}")
             else:
                 self._display_placeholder()
@@ -142,14 +146,25 @@ class MusicMode:
 
     def _display_placeholder(self):
         """Display placeholder when nothing is playing"""
+        self._show_message("No Music\nPlaying", (100, 100, 100))
+
+    def _show_message(self, text, color):
+        """Show a centred status message"""
         try:
+            # Already on screen? Don't re-render and re-push the same frame.
+            if (getattr(self, '_message_key', None) == (text, color)
+                    and self.display.current_image is getattr(self, '_message_frame', None)):
+                return
             display_size = self.display.get_size()
             placeholder = self.image_processor.create_text_image(
-                "No Music\nPlaying",
+                text,
                 display_size,
-                color=(100, 100, 100)
+                color=color
             )
             self.display.display_image(placeholder)
+            self.last_frame = None
+            self._message_key = (text, color)
+            self._message_frame = self.display.current_image
 
         except Exception as e:
             self.logger.error(f"Error displaying placeholder: {e}")

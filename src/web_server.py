@@ -6,6 +6,7 @@ import logging
 import os
 import json
 import hashlib
+import hmac
 import secrets
 from pathlib import Path
 from functools import wraps
@@ -40,15 +41,20 @@ class WebServer:
         self.flask_app.secret_key = self.config.get('secret_key', secrets.token_hex(32))
 
         # Admin credentials (in production, use proper password hashing and database)
-        self.admin_username = self.config.get('admin_username', 'admin')
-        self.admin_password_hash = self._hash_password(
-            self.config.get('admin_password', 'changeme')
-        )
+        self.update_credentials(self.config)
 
         # Setup routes
         self._setup_routes()
 
         self.logger.info("Web server initialized")
+
+    def update_credentials(self, config):
+        """Apply admin username/password from config (used live by the admin panel)."""
+        self.config = config
+        self.admin_username = config.get('admin_username', 'admin')
+        password = config.get('admin_password', 'changeme')
+        self.admin_password_hash = self._hash_password(password)
+        self.using_default_password = password == 'changeme'
 
     def _hash_password(self, password):
         """Hash password using SHA-256"""
@@ -56,7 +62,7 @@ class WebServer:
 
     def _check_password(self, password):
         """Check if password is correct"""
-        return self._hash_password(password) == self.admin_password_hash
+        return hmac.compare_digest(self._hash_password(password), self.admin_password_hash)
 
     def _login_required(self, f):
         """Decorator to require login for admin routes"""
@@ -128,7 +134,11 @@ class WebServer:
         @self.flask_app.route('/api/auth/check')
         def check_auth():
             """Check if user is authenticated"""
-            return jsonify({'authenticated': session.get('authenticated', False)})
+            authenticated = session.get('authenticated', False)
+            result = {'authenticated': authenticated}
+            if authenticated:
+                result['default_password'] = self.using_default_password
+            return jsonify(result)
 
         @self.flask_app.route('/api/status')
         def get_status():
@@ -200,8 +210,8 @@ class WebServer:
             """Display test pattern"""
             try:
                 if self.app_instance.display:
-                    self.app_instance.display.test_pattern()
-                    return jsonify({'status': 'success', 'message': 'Test pattern displayed'})
+                    self.app_instance.show_test_pattern()
+                    return jsonify({'status': 'success', 'message': 'Test pattern displayed for 5 seconds'})
                 else:
                     return jsonify({'error': 'Display not available'}), 503
 
@@ -214,7 +224,7 @@ class WebServer:
             """Clear display"""
             try:
                 if self.app_instance.display:
-                    self.app_instance.display.clear()
+                    self.app_instance.clear_display()
                     return jsonify({'status': 'success', 'message': 'Display cleared'})
                 else:
                     return jsonify({'error': 'Display not available'}), 503

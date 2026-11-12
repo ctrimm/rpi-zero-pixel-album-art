@@ -139,11 +139,14 @@ nano config.json  # Add your Spotify API credentials
 ### 4. First Run
 
 ```bash
-# Start the display
-python3 src/main.py
+# Sign in to Spotify once (as your normal user, not sudo)
+venv/bin/python src/spotify_auth.py
 
-# Or run as a service
-sudo systemctl start spotify-display
+# Start the display (and on every boot)
+sudo systemctl enable --now spotify-display
+
+# Or run it in the foreground to watch the logs
+sudo venv/bin/python src/main.py
 ```
 
 Visit `http://your-pi-ip:5000` in your browser to access the web interface!
@@ -303,7 +306,7 @@ See [docs/SCREENSAVERS.md](docs/SCREENSAVERS.md) for detailed configuration and 
 - Add 1000μF capacitor across power terminals
 
 ### Spotify not connecting
-- Run `python3 src/spotify_auth.py` to re-authenticate
+- Run `venv/bin/python src/spotify_auth.py` to re-authenticate
 - Check Client ID/Secret in config.json
 - Verify redirect URI matches Spotify dashboard
 
