@@ -361,6 +361,9 @@
                     { path: 'modes.schedule.music.auto', label: 'Show album art when music starts', type: 'toggle', def: true, dependsOn: 'modes.auto_switch' },
                     { path: 'modes.schedule.clock.fallback', label: 'Show the clock when music stops', type: 'toggle', def: true, dependsOn: 'modes.auto_switch' },
                 ]},
+                { title: 'Now playing', fields: [
+                    { path: 'advanced.show_track_info', label: 'Show song & artist', help: 'Shown over the bottom of the album art. Long names scroll.', type: 'toggle', def: true },
+                ]},
                 { title: 'Clock', fields: [
                     { path: 'modes.schedule.clock.style', label: 'Style', type: 'segmented', options: [['analog', 'Analog'], ['digital', 'Digital']], def: 'analog' },
                     { path: 'clock.time_format', label: 'Time format', type: 'segmented', options: [['12h', '12-hour'], ['24h', '24-hour']], def: '12h' },
