@@ -7,7 +7,10 @@ Auto-detects environment and uses simulator on development machines
 import logging
 import os
 import platform
+import threading
 from PIL import Image, ImageDraw, ImageFont
+
+from utils.runtime import service_user
 
 # Check if we should use simulator
 def should_use_simulator():
@@ -54,6 +57,9 @@ class LEDDisplay:
         self.matrix = None
         self.offscreen_canvas = None
         self.current_image = None
+        # display_image() is called from the display loop *and* the web server
+        # thread (test pattern, clear); double-buffer swaps must not interleave.
+        self._lock = threading.Lock()
 
         if MATRIX_AVAILABLE:
             self._initialize_matrix()
@@ -86,7 +92,13 @@ class LEDDisplay:
             options.show_refresh_rate = self.config.get('show_refresh_rate', False)
 
             # Disable hardware pulsing
-            options.disable_hardware_pulsing = True
+            options.disable_hardware_pulsing = self.config.get('disable_hardware_pulsing', True)
+
+            # The library needs root for flicker-free timing, then drops
+            # privileges right after init. By default it drops to 'daemon',
+            # which can't read the Spotify login or config in the user's home,
+            # so drop to the user the app was installed for instead.
+            self._configure_privilege_drop(options)
 
             self.matrix = RGBMatrix(options=options)
             self.offscreen_canvas = self.matrix.CreateFrameCanvas()
@@ -98,6 +110,29 @@ class LEDDisplay:
         except Exception as e:
             self.logger.error(f"Failed to initialize LED matrix: {e}")
             raise
+
+    def _configure_privilege_drop(self, options):
+        """Point the library's post-init privilege drop at our service user."""
+        if not hasattr(os, 'geteuid'):
+            return
+        if os.geteuid() != 0:
+            self.logger.warning(
+                "Not running as root: the LED matrix will use /dev/gpiomem and may "
+                "flicker. The systemd service from install.sh runs it correctly."
+            )
+            return
+        user = service_user()
+        if not user or user == 'root' or not hasattr(options, 'drop_priv_user'):
+            return
+        try:
+            import pwd
+            import grp
+            entry = pwd.getpwnam(user)
+            options.drop_priv_user = user
+            options.drop_priv_group = grp.getgrgid(entry.pw_gid).gr_name
+            self.logger.info(f"LED matrix will drop root privileges to '{user}' after init")
+        except (KeyError, ImportError) as e:
+            self.logger.warning(f"Can't drop privileges to '{user}': {e}")
 
     def display_image(self, image):
         """
@@ -121,7 +156,16 @@ class LEDDisplay:
         self.current_image = image
 
         if MATRIX_AVAILABLE and self.matrix:
-            self.matrix.SetImage(image)
+            with self._lock:
+                if self.offscreen_canvas is not None:
+                    # Double buffering: draw into the back buffer, then swap it
+                    # in at the next refresh. Writing straight to the matrix
+                    # (the old behaviour) modifies the frame while the panel is
+                    # scanning it out, which shows up as tearing in animations.
+                    self.offscreen_canvas.SetImage(image)
+                    self.offscreen_canvas = self.matrix.SwapOnVSync(self.offscreen_canvas)
+                else:
+                    self.matrix.SetImage(image)
         else:
             # In simulation mode, optionally save to file for debugging
             self.logger.debug(f"Simulation: Would display {image.size} image")
@@ -192,7 +236,20 @@ class LEDDisplay:
         brightness = max(0, min(100, brightness))
 
         if MATRIX_AVAILABLE and self.matrix:
-            self.matrix.brightness = brightness
+            with self._lock:
+                # Brightness is stored per frame buffer: set the live one via
+                # the matrix and the back buffer explicitly, otherwise the next
+                # swap would bring the old brightness back.
+                self.matrix.brightness = brightness
+                if self.offscreen_canvas is not None:
+                    self.offscreen_canvas.brightness = brightness
+                if self.current_image is not None and self.offscreen_canvas is not None:
+                    # The library applies brightness when pixels are written,
+                    # so re-draw the current frame - otherwise static screens
+                    # (album art) wouldn't change until their next redraw.
+                    self.offscreen_canvas.SetImage(self.current_image)
+                    self.offscreen_canvas = self.matrix.SwapOnVSync(self.offscreen_canvas)
+                    self.offscreen_canvas.brightness = brightness
             self.logger.info(f"Brightness set to {brightness}")
         else:
             self.logger.debug(f"Simulation: Brightness set to {brightness}")

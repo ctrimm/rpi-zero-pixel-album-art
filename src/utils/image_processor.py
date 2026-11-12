@@ -12,6 +12,8 @@ import requests
 from PIL import Image, ImageEnhance, ImageDraw, ImageFont
 from cachetools import LRUCache
 
+from utils.runtime import cache_dir
+
 
 class ImageProcessor:
     """Process and optimize images for LED matrix display"""
@@ -28,54 +30,43 @@ class ImageProcessor:
         self.cache_enabled = self.config.get('cache_images', True)
         self.cache_size = self.config.get('cache_size_mb', 100)
 
-        # Initialize image cache
-        self.image_cache = LRUCache(maxsize=50) if self.cache_enabled else None
+        # Caches hold the *processed* display-sized image (64x64 is ~12 KB),
+        # not the 640px original: the old full-size cache cost ~1.2 MB of RAM
+        # per entry (up to ~58 MB) and ~220 KB of SD card per track, unbounded.
+        self.image_cache = LRUCache(maxsize=200) if self.cache_enabled else None
 
         # Create cache directory
-        self.cache_dir = Path.home() / '.cache' / 'spotify-display' / 'images'
+        self.cache_dir = cache_dir() / 'images'
         if self.cache_enabled:
-            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                self.cache_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                self.logger.warning(f"Image disk cache disabled: {e}")
 
-    def download_image(self, url):
+    def download_image(self, url, target_size=None):
         """
-        Download image from URL
+        Download an image from a URL (uncached).
 
         Args:
             url: Image URL
+            target_size: Optional (w, h). For JPEGs this lets the decoder
+                downscale while decoding (DCT scaling), which is several times
+                faster than decoding at full size and resizing afterwards.
 
         Returns:
-            PIL.Image: Downloaded image
+            PIL.Image or None
         """
         try:
-            # Check memory cache first
-            if self.cache_enabled and url in self.image_cache:
-                self.logger.debug(f"Image loaded from memory cache: {url}")
-                return self.image_cache[url]
-
-            # Check disk cache
-            cache_filename = self._get_cache_filename(url)
-            cache_path = self.cache_dir / cache_filename
-
-            if self.cache_enabled and cache_path.exists():
-                self.logger.debug(f"Image loaded from disk cache: {cache_filename}")
-                image = Image.open(cache_path)
-                self.image_cache[url] = image
-                return image
-
-            # Download image
             self.logger.debug(f"Downloading image: {url}")
             response = requests.get(url, timeout=10)
             response.raise_for_status()
-
             image = Image.open(BytesIO(response.content))
-
-            # Cache the image
-            if self.cache_enabled:
-                image.save(cache_path)
-                self.image_cache[url] = image
-
+            if target_size:
+                # Decode at >= 2x the target so the LANCZOS resize still has
+                # detail to work with. No-op for non-JPEG images.
+                image.draft('RGB', (target_size[0] * 2, target_size[1] * 2))
+            image.load()
             return image
-
         except Exception as e:
             self.logger.error(f"Error downloading image from {url}: {e}")
             return None
@@ -91,10 +82,16 @@ class ImageProcessor:
         Returns:
             PIL.Image: Processed image ready for display
         """
+        size = tuple(size)
+        cache_key = None
         try:
-            # Download if URL
+            # Download if URL (checking the processed-image caches first)
             if isinstance(image_or_url, str):
-                image = self.download_image(image_or_url)
+                cache_key = self._cache_key(image_or_url, size)
+                cached = self._cache_get(cache_key)
+                if cached is not None:
+                    return cached
+                image = self.download_image(image_or_url, target_size=size)
                 if image is None:
                     return self.create_placeholder_image(size, "No Album Art")
             else:
@@ -113,11 +110,72 @@ class ImageProcessor:
             # Enhance for LED display
             image = self._enhance_for_led(image)
 
+            if cache_key:
+                self._cache_put(cache_key, image)
+
             return image
 
         except Exception as e:
             self.logger.error(f"Error processing album art: {e}")
             return self.create_placeholder_image(size, "Error")
+
+    # ------------------------------------------------------------- caching
+
+    def _cache_key(self, url, size):
+        """Key covers everything that changes the output, so tweaking contrast
+        etc. in the admin panel doesn't serve stale cached art."""
+        settings = (
+            size,
+            self.config.get('enhance_contrast', True), self.config.get('contrast_factor', 1.2),
+            self.config.get('enhance_saturation', True), self.config.get('saturation_factor', 1.1),
+        )
+        return hashlib.md5(f"{url}|{settings}".encode()).hexdigest()
+
+    def _cache_get(self, key):
+        if not self.cache_enabled:
+            return None
+        image = self.image_cache.get(key)
+        if image is not None:
+            return image
+        path = self.cache_dir / f"{key}.png"
+        try:
+            with Image.open(path) as cached:
+                image = cached.convert('RGB')
+            os.utime(path)  # mark as recently used for pruning
+            self.image_cache[key] = image
+            self.logger.debug(f"Album art loaded from disk cache: {path.name}")
+            return image
+        except (OSError, ValueError):
+            return None
+
+    def _cache_put(self, key, image):
+        if not self.cache_enabled:
+            return
+        self.image_cache[key] = image
+        try:
+            image.save(self.cache_dir / f"{key}.png")
+            self._prune_disk_cache()
+        except OSError as e:
+            self.logger.debug(f"Could not write image cache: {e}")
+
+    def _prune_disk_cache(self):
+        """Keep the disk cache under cache_size_mb, dropping least recently used."""
+        limit = max(1, int(self.cache_size)) * 1024 * 1024
+        try:
+            files = [(f, f.stat()) for f in self.cache_dir.glob('*.png')]
+        except OSError:
+            return
+        total = sum(st.st_size for _, st in files)
+        if total <= limit:
+            return
+        for f, st in sorted(files, key=lambda item: item[1].st_mtime):
+            try:
+                f.unlink()
+                total -= st.st_size
+            except OSError:
+                pass
+            if total <= limit * 0.9:
+                break
 
     def _center_crop_square(self, image):
         """
@@ -210,29 +268,15 @@ class ImageProcessor:
 
         try:
             font = ImageFont.load_default()
-            bbox = draw.textbbox((0, 0), text, font=font)
+            bbox = draw.multiline_textbbox((0, 0), text, font=font, align='center')
             text_width = bbox[2] - bbox[0]
             text_height = bbox[3] - bbox[1]
-            position = ((size[0] - text_width) // 2, (size[1] - text_height) // 2)
-            draw.text(position, text, font=font, fill=color)
+            position = ((size[0] - text_width) // 2 - bbox[0], (size[1] - text_height) // 2 - bbox[1])
+            draw.multiline_text(position, text, font=font, fill=color, align='center')
         except Exception as e:
             self.logger.error(f"Error creating text image: {e}")
 
         return image
-
-    def _get_cache_filename(self, url):
-        """
-        Generate cache filename from URL
-
-        Args:
-            url: Image URL
-
-        Returns:
-            str: Cache filename
-        """
-        # Create hash of URL
-        url_hash = hashlib.md5(url.encode()).hexdigest()
-        return f"{url_hash}.png"
 
     def clear_cache(self):
         """Clear image cache"""

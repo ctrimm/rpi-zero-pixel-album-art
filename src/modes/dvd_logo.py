@@ -13,6 +13,15 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.image_processor import ImageProcessor
+from utils.runtime import wait_for_frame
+
+
+PIXEL_TEXT = "DVD"
+# 3x5 glyphs, one int per row, bit 2 = left column
+PIXEL_GLYPHS = {
+    'D': [0b110, 0b101, 0b101, 0b101, 0b110],
+    'V': [0b101, 0b101, 0b101, 0b010, 0b010],
+}
 
 
 class DVDLogoMode:
@@ -52,6 +61,7 @@ class DVDLogoMode:
         self.rainbow_mode = False
         self.rainbow_index = 0
         self.last_update = 0
+        self._frame_clock = {}
 
         # Corner hit counter
         self.corner_hits = 0
@@ -91,11 +101,10 @@ class DVDLogoMode:
         """Update DVD logo screensaver"""
         try:
             # Rate limiting for smooth animation
-            current_time = time.time()
-            if current_time - self.last_update < self.speed:
-                return  # Skip frame but don't sleep - keeps animation smooth
-
-            self.last_update = current_time
+            # Sleep until this frame is due (interrupted by mode switches)
+            if not wait_for_frame(self._frame_clock, self.speed):
+                return
+            self.last_update = time.time()
 
             # Move logo
             new_x = self.x + self.dx
@@ -161,38 +170,32 @@ class DVDLogoMode:
         image = Image.new('RGB', (self.width, self.height), (0, 0, 0))
         draw = ImageDraw.Draw(image)
 
-        # Draw DVD logo (simplified as text)
-        try:
-            font = ImageFont.load_default()
-        except:
-            font = None
-
-        # Draw logo box
         logo_x = int(self.x)
         logo_y = int(self.y)
 
-        # Draw filled rectangle for logo
+        # Logo box (inclusive coords, so subtract 1 to keep it logo_width wide)
         draw.rectangle(
-            [(logo_x, logo_y), (logo_x + self.logo_width, logo_y + self.logo_height)],
-            fill=self.color,
-            outline=self.color
+            [(logo_x, logo_y), (logo_x + self.logo_width - 1, logo_y + self.logo_height - 1)],
+            fill=self.color
         )
 
-        # Draw "DVD" text in black on the colored rectangle
-        text = "DVD"
-        bbox = draw.textbbox((0, 0), text, font=font)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
+        # "DVD" in a tiny 3x5 pixel font so it fits inside the 16x8 box
+        text_w = len(PIXEL_TEXT) * 4 - 1
+        tx = logo_x + (self.logo_width - text_w) // 2
+        ty = logo_y + (self.logo_height - 5) // 2
+        for i, ch in enumerate(PIXEL_TEXT):
+            for row, bits in enumerate(PIXEL_GLYPHS[ch]):
+                for col in range(3):
+                    if bits & (4 >> col):
+                        draw.point((tx + i * 4 + col, ty + row), fill=(0, 0, 0))
 
-        text_x = logo_x + (self.logo_width - text_width) // 2
-        text_y = logo_y + (self.logo_height - text_height) // 2
-
-        draw.text((text_x, text_y), text, font=font, fill=(0, 0, 0))
-
-        # Draw corner hit counter in corner
+        # Corner hit counter, bottom-right in dim grey
         if self.corner_hits > 0:
-            counter_text = f"🎯{self.corner_hits}"
-            draw.text((2, 2), counter_text, font=font, fill=(100, 100, 100))
+            font = ImageFont.load_default()
+            counter_text = str(self.corner_hits)
+            bbox = draw.textbbox((0, 0), counter_text, font=font)
+            draw.text((self.width - (bbox[2] - bbox[0]) - 2, self.height - 12), counter_text,
+                      font=font, fill=(80, 80, 80))
 
         # Display
         self.display.display_image(image)

@@ -1,23 +1,23 @@
+# Reference copy - install.sh generates /etc/systemd/system/spotify-display.service
+# with the right paths and user for your Pi. Replace "pi" below if you install by hand.
 [Unit]
 Description=Spotify LED Matrix Display
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi
+# Starts as root so the LED library can use precise timing hardware, then
+# drops privileges to SPOTIFY_DISPLAY_USER right after initialising the panel.
+User=root
 WorkingDirectory=/home/pi/rpi-zero-pixel-album-art
-ExecStart=/usr/bin/python3 /home/pi/rpi-zero-pixel-album-art/src/main.py
+Environment=SPOTIFY_DISPLAY_USER=pi
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/pi/rpi-zero-pixel-album-art/venv/bin/python /home/pi/rpi-zero-pixel-album-art/src/main.py
 Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-
-# Security settings
-PrivateTmp=true
-NoNewPrivileges=true
-
-# Environment
-Environment="PYTHONUNBUFFERED=1"
 
 [Install]
 WantedBy=multi-user.target

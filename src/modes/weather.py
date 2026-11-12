@@ -13,6 +13,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.image_processor import ImageProcessor
+from utils.runtime import mode_sleep
 
 
 class WeatherMode:
@@ -51,7 +52,7 @@ class WeatherMode:
         """Update weather display"""
         if not self.enabled:
             self._display_disabled_message()
-            time.sleep(10)
+            mode_sleep(10)
             return
 
         try:
@@ -67,12 +68,12 @@ class WeatherMode:
             else:
                 self._display_error()
 
-            time.sleep(5)
+            mode_sleep(5)
 
         except Exception as e:
             self.logger.error(f"Error in weather mode update: {e}")
             self._display_error()
-            time.sleep(10)
+            mode_sleep(10)
 
     def _fetch_weather(self):
         """

@@ -1,409 +1,217 @@
 # Raspberry Pi Spotify LED Matrix Display
 
-A standalone Raspberry Pi solution that displays album art, weather, and sports scores on a 64x64 LED matrix panel. No Home Assistant required - runs completely independently on your local network.
-
-**🆕 NEW: Development Mode!** Test and develop on your Mac with a visual LED simulator - no Pi hardware needed! See [Development Guide](docs/DEVELOPMENT.md)
+Turn a 64×64 RGB LED panel into a little always-on display for your desk or wall:
+album art for whatever's playing on Spotify, a clock, weather, live sports scores, a
+retro "Weather on the 8s" forecast and a couple of screensavers. It runs entirely on a
+Raspberry Pi on your own network — no Home Assistant or cloud service needed.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.7+-blue.svg)
-![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20%7C%20Mac%20%7C%20Linux-blue)
+![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
+![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi-red)
+
+## What it's like to have one
+
+<p align="center">
+  <img src="docs/media/demo-pi.gif" alt="A simulated morning on the display: album art with scrolling song info, a track change, the clock when the music stops, Weather on the 8s at 10:08, live sports, the Pipes and DVD screensavers, and album art again when music starts" width="320">
+</p>
+
+*A simulated morning, rendered from the app's real display code (album covers and band
+names are made up). The panel switches on its own: album art while music plays, the
+clock when it stops, a local forecast every ten minutes, and whatever you pick from your
+phone in between.*
+
+## Gallery
+
+Each mode on its own, looping (also rendered from the real display code):
+
+| Music | Weather on the 8s | Live sports |
+|:---:|:---:|:---:|
+| <img src="docs/media/gallery/music.gif" alt="Album art with the artist and a long song title scrolling along the bottom" width="200"> | <img src="docs/media/gallery/weather-on-8s.gif" alt="The full Weather on the 8s sequence with animated weather icons" width="200"> | <img src="docs/media/gallery/sports.gif" alt="Live score in team colours, then both teams' records" width="200"> |
+| Long names scroll, then reset | The full sequence, sped up (2.5 s per screen) | Score and game clock, then records |
+| **Clock** | **Pipes** | **DVD logo** |
+| <img src="docs/media/gallery/clock.gif" alt="Analog clock with a ticking second hand" width="200"> | <img src="docs/media/gallery/pipes.gif" alt="Pipes screensaver: coloured pipes growing and fading" width="200"> | <img src="docs/media/gallery/dvd-logo.gif" alt="Bouncing DVD logo changing colour, with a perfect corner hit" width="200"> |
+| Analog or digital | Windows-style 3D pipes | Watch for the corner hit (counter bottom-right) |
 
 ## Features
 
-- **Real-time Spotify Integration**: Automatically displays album art from your currently playing Spotify track
-- **Multiple Display Modes**:
-  - 🎵 Music: Album artwork with artist/track info
-  - 🌤️ Weather: Current conditions and forecast
-  - 📺 **Weather on the 8s**: Classic Weather Channel style forecast every 10 minutes (:08, :18, :28, :38, :48, :58)
-  - ⚽ Sports: Live scores and game updates
-  - 🕐 Clock: Time and date display
-  - 🔧 Pipes: Classic Windows 3D Pipes screensaver
-  - 📀 DVD Logo: Bouncing DVD logo with rainbow corner hits
-- **Web Interface**: Simple browser-based control accessible from any device on your network
-- **🔐 Admin Panel**: Secure web-based configuration editor with live updates (no restart required!)
-- **Automatic Mode Switching**: Smart scheduling based on time and activity
-- **Standalone Operation**: No cloud dependencies or Home Assistant required
-- **Nostalgic Weather Display**: Recreation of the iconic "Local on the 8s" feature
+- 🎵 **Album art** for the current Spotify track, tuned for LEDs (contrast/saturation),
+  with the **song and artist** along the bottom — long names scroll. Turn the text off
+  for art only.
+- 🔀 **Switches by itself**: album art when music starts, the clock when it stops,
+  time-based schedules. A mode you pick by hand stays until music starts again.
+- 📺 **Weather on the 8s**: a Weather Channel-style local forecast at :08, :18, :28, :38,
+  :48 and :58 (current conditions, details, next hours, 3-day), then back to what was on.
+- 🌤️ **Weather**: current temperature and conditions (OpenWeatherMap, free key).
+- 🏈 **Live sports**: your team's score, game clock and records from ESPN — NFL, NBA,
+  WNBA, MLB, NHL, MLS, college football and basketball. No API key.
+- 🕐 **Clock**: analog or digital, 12- or 24-hour.
+- 🔧📀 **Screensavers**: Windows-style 3D Pipes and the bouncing DVD logo (with the
+  corner-hit rainbow).
+- 📱 **Web dashboard** on your network: switch modes, brightness, test pattern, now playing.
+- 🔐 **Admin panel**: every setting in a proper form (or raw JSON), applied live — no restarts.
 
-## Hardware Requirements
+Prefer a microcontroller to a Pi? An **Adafruit Matrix Portal** (S3 or M4) version lives on
+the [`claude/port-matrix-portal-LFL6w`](https://github.com/ctrimm/rpi-zero-pixel-album-art/tree/claude/port-matrix-portal-LFL6w)
+branch.
 
-### What You Need
+## Hardware
 
-**Core Components** (~$50-80):
-- Raspberry Pi Zero 2 W ($15) or Raspberry Pi 4B 2GB ($45)
-- MicroSD Card 32GB Class 10 ($8)
-- Adafruit RGB Matrix Bonnet ($15) or generic adapter ($10)
-- P3-2121 LED Matrix Panel 64x64 pixels (you have this)
-- 5V 5A Power Supply ($15) - for panel power
-- Power cable (you have this)
+| Part | Notes | ~Cost |
+|---|---|---|
+| Raspberry Pi Zero 2 W (or Pi 3/4) | Pi Zero 2 W is plenty | $15 |
+| [Adafruit RGB Matrix Bonnet](https://www.adafruit.com/product/3211) | Plugs onto the Pi — no wiring. Or wire a generic HUB75 adapter ([guide](docs/WIRING.md)) | $15 |
+| 64×64 HUB75 LED panel | P3 or P2.5 pitch for indoors | $25–40 |
+| 5V 4–5A power supply | Powers the panel (not through the Pi) | $15 |
+| microSD card, 16 GB+ | | $8 |
 
-**Optional**:
-- Frame/enclosure ($10-20)
-- Diffuser panel for smoother image ($5)
+> **64×64 panels on the Bonnet need one solder blob:** bridge the Bonnet's **E** pad to
+> **8**. Without it only half the panel lights up. See [docs/WIRING.md](docs/WIRING.md).
 
-### Where to Buy
+## Quick start
 
-**Option 1: Amazon (Best for Speed)**
-- [Raspberry Pi Zero 2 W](https://amazon.com/s?k=raspberry+pi+zero+2+w) - $15-20
-- [SanDisk 32GB MicroSD](https://amazon.com/dp/B08GY9NYRM) - $7-10
-- [5V 5A Power Supply](https://amazon.com/s?k=5v+5a+power+supply) - $12-18
-
-**Option 2: Adafruit (Best Quality)**
-- [Raspberry Pi Zero 2 W](https://www.adafruit.com/product/5291) - $15
-- [RGB Matrix Bonnet](https://www.adafruit.com/product/3211) - $15
-- [5V 4A Power Supply](https://www.adafruit.com/product/1466) - $15
-
-**Option 3: AliExpress (Best Price)**
-- Generic RGB Matrix adapter boards - $8-12
-- HUB75 cables and connectors - $3-5
-- Slower shipping (2-4 weeks)
-
-### Complete Budget Options
-
-| Build Option | Total Cost | Best For |
-|-------------|------------|----------|
-| Pi Zero 2 W | ~$51 | Budget builds, low power |
-| Pi 4B 2GB | ~$81 | Better performance, faster image processing |
-| ESP32 Alternative | ~$39 | Ultra-low power, advanced users |
-
-## Quick Start
-
-### 🖥️ Development Mode (Mac/Windows/Linux)
-
-**Want to develop without deploying to Pi every time?**
+New to Raspberry Pi? Follow **[docs/PI_SETUP_GUIDE.md](docs/PI_SETUP_GUIDE.md)** from
+flashing the SD card onwards. Short version, on Raspberry Pi OS (Bookworm or newer):
 
 ```bash
-# Clone and setup
 git clone https://github.com/ctrimm/rpi-zero-pixel-album-art.git
 cd rpi-zero-pixel-album-art
-
-# On Mac: Use virtual environment (required for modern macOS)
-bash setup_mac.sh
-source venv/bin/activate
-
-# On Windows/Linux:
-pip3 install -r requirements.txt
-
-# Configure Spotify credentials
-cp config.example.json config.json
-nano config.json  # Add your Spotify API credentials
-
-# Run with visual simulator
-python3 dev_run.py
+sudo bash install.sh                     # dependencies, LED library, virtualenv, service
+nano config.json                         # add your Spotify Client ID + secret
+venv/bin/python src/spotify_auth.py      # sign in to Spotify (as yourself, not sudo)
+sudo systemctl enable --now spotify-display
 ```
 
-A window will open showing the 64x64 LED matrix! All features work exactly like on real hardware.
+Spotify credentials come from the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard):
+create an app and add the redirect URI `http://127.0.0.1:8888/callback`. On a Pi without a
+screen, `spotify_auth.py` prints a link — open it on your phone, sign in, and paste the
+address you land on back into the terminal.
 
-📖 **Full development guide:** [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
-🍎 **Mac setup guide:** [docs/MAC_SETUP.md](docs/MAC_SETUP.md)
+Then open **`http://<your-pi>:5000`** for the dashboard and **`/admin`** for settings
+(login `admin` / `changeme` — change it there; the panel reminds you).
 
----
+To watch the logs instead of running it as a service: `sudo venv/bin/python src/main.py`.
 
-### 🔴 Raspberry Pi Deployment
+## Settings
 
-**🆕 Complete beginner's guide:** See [**docs/PI_SETUP_GUIDE.md**](docs/PI_SETUP_GUIDE.md) for step-by-step instructions starting from flashing your SD card!
+Everything is editable in the admin panel, which saves to `config.json` and applies
+changes immediately (LED hardware settings need a restart). The highlights:
 
-### 1. Hardware Assembly
+| Where | Setting |
+|---|---|
+| General | Brightness, default mode, auto-switching, clock style, song & artist on/off |
+| Spotify | Client ID/secret, how often to check for skips |
+| Weather | OpenWeatherMap key and location, Weather on the 8s |
+| Sports | League, team, refresh rate |
+| Hardware | Adapter board (`adafruit-hat` for the Bonnet), panel size, GPIO slowdown, colour order |
+| Security | Admin username/password |
 
-**Power Connection**:
-1. Connect 5V power supply to LED panel power terminals (red=+5V, black=GND)
-2. CRITICAL: Double-check polarity before powering on!
+`config.example.json` documents every key if you prefer editing the file.
 
-**Signal Connection**:
-- Use Adafruit RGB Matrix Bonnet (easiest): Just plug onto Pi GPIO header
-- OR manual wiring: See [wiring diagram](docs/WIRING.md) for pin connections
+## Display modes
 
-### 2. Software Installation
+**Music** — album art for the current track; artist (cyan) and song (white) on a dark
+band along the bottom, scrolling when they don't fit.
+
+**Weather on the 8s** — at :08, :18, :28, :38, :48 and :58 it takes over for ~46 seconds:
+intro, current conditions with today's high/low, humidity/wind/visibility, two "next
+hours" screens and a 3-day outlook, then hands the screen back. Uses the Weather mode's
+API key unless you give it its own. Details: [docs/WEATHER_ON_8S.md](docs/WEATHER_ON_8S.md).
+
+**Weather** — current temperature and conditions.
+
+**Sports** — away/home team bars in team colours with the score and game clock
+(`Q4 2:31`, `FINAL`, or the start time for an upcoming game), alternating with the teams'
+records. Shows "No game" when your team isn't playing.
+
+**Clock** — analog (with a second hand) or digital with the date.
+
+**Pipes / DVD logo** — screensavers. Details: [docs/SCREENSAVERS.md](docs/SCREENSAVERS.md).
+
+## Web API
+
+All on port 5000. POST bodies are JSON.
+
+| Endpoint | |
+|---|---|
+| `GET /api/status` | Mode, brightness, Spotify state and current track |
+| `POST /api/mode` | `{"mode": "music" \| "weather" \| "sports" \| "clock" \| "pipes" \| "dvd_logo"}` |
+| `POST /api/brightness` | `{"brightness": 0-100}` |
+| `GET /api/spotify/current` | Current track |
+| `GET /api/display/test` | Colour-bar test pattern for 5 seconds |
+| `GET /api/display/clear` | Blank the panel for 3 seconds |
+| `GET /health` | Liveness check |
 
 ```bash
-# Clone this repository
-git clone https://github.com/yourusername/rpi-zero-pixel-album-art.git
-cd rpi-zero-pixel-album-art
-
-# Run automated installation script
-sudo bash install.sh
-
-# Configure your settings
-cp config.example.json config.json
-nano config.json  # Add your Spotify API credentials
+curl -X POST http://<your-pi>:5000/api/mode -H 'Content-Type: application/json' -d '{"mode": "clock"}'
 ```
 
-### 3. Spotify API Setup
-
-1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Create a new app
-3. Note your **Client ID** and **Client Secret**
-4. Add redirect URI: `http://127.0.0.1:8888/callback`
-5. Add credentials to `config.json`
-
-### 4. First Run
-
-```bash
-# Start the display
-python3 src/main.py
-
-# Or run as a service
-sudo systemctl start spotify-display
-```
-
-Visit `http://your-pi-ip:5000` in your browser to access the web interface!
-
-## Configuration
-
-Edit `config.json`:
-
-```json
-{
-  "spotify": {
-    "client_id": "your_client_id_here",
-    "client_secret": "your_client_secret_here",
-    "redirect_uri": "http://127.0.0.1:8888/callback"
-  },
-  "display": {
-    "rows": 64,
-    "cols": 64,
-    "brightness": 80,
-    "gpio_slowdown": 2
-  },
-  "modes": {
-    "default": "music",
-    "schedule": {
-      "weather": ["06:00-09:00"],
-      "music": ["auto"],
-      "sports": ["18:00-23:00"]
-    }
-  },
-  "weather": {
-    "api_key": "your_openweather_api_key",
-    "location": "New York,US"
-  },
-  "sports": {
-    "team": "NO",
-    "league": "NFL"
-  }
-}
-```
-
-## Usage
-
-### Web Interface
-
-Access the control panel at `http://your-pi-ip:5000`:
-- Switch between display modes
-- Adjust brightness
-- View currently playing track
-- Configure schedules
-
-### Admin Panel
-
-Access the secure admin panel at `http://your-pi-ip:5000/login`:
-
-**Features:**
-- 🔐 Password-protected access
-- 📝 Edit configuration JSON in your browser
-- ✓ Validate changes before saving
-- 💾 Apply changes immediately without restart
-- 📊 View system status in real-time
-
-**Quick Start:**
-1. Navigate to `http://your-pi-ip:5000/login`
-2. Login with credentials from your config.json:
-   - Default username: `admin`
-   - Default password: `changeme` (⚠️ **change this!**)
-3. Edit configuration and click "Save Configuration"
-4. Changes apply instantly!
-
-See [docs/ADMIN_PANEL.md](docs/ADMIN_PANEL.md) for detailed documentation and security best practices.
-
-### Manual Mode Switching
-
-```bash
-# Display album art
-curl http://your-pi-ip:5000/api/mode -X POST -d '{"mode":"music"}'
-
-# Show weather
-curl http://your-pi-ip:5000/api/mode -X POST -d '{"mode":"weather"}'
-
-# Sports scores
-curl http://your-pi-ip:5000/api/mode -X POST -d '{"mode":"sports"}'
-```
-
-### Auto-start on Boot
-
-```bash
-# Enable systemd service
-sudo systemctl enable spotify-display
-sudo systemctl start spotify-display
-
-# Check status
-sudo systemctl status spotify-display
-```
-
-## Display Modes
-
-### Music Mode
-- Displays current Spotify album artwork
-- Shows artist and track name scrolling text
-- Auto-updates when track changes
-- Supports Spotify Connect from any device
-
-### Weather Mode
-- Current temperature and conditions
-- Weather icons
-- 3-day forecast
-- Uses OpenWeatherMap API (free tier)
-
-### Weather on the 8s (NEW!)
-- **Classic Weather Channel nostalgia!**
-- Automatically displays every 10 minutes at :08, :18, :28, :38, :48, :58
-- 90-second animated forecast sequence
-- Shows current conditions, hourly forecast, and details
-- Overrides current mode temporarily, then returns
-- Configurable location and units
-- See [detailed documentation](docs/WEATHER_ON_8S.md)
-
-### Sports Mode
-- Live scores during games
-- Team logos
-- Game schedule
-- Supports NFL, NBA, MLB, NHL via ESPN API
-
-### Clock Mode
-- Large time display
-- Date and day of week
-- Customizable colors
-
-### Retro Screensavers
-
-**Pipes Mode** 🔧
-- Classic Windows 3D Pipes aesthetic
-- Multiple colorful pipes growing across the display
-- Configurable number of pipes, speed, and trail effects
-- Perfect for nostalgic ambiance
-
-**DVD Logo Mode** 📀
-- Iconic bouncing DVD logo animation
-- Random color changes on edge hits
-- **Special rainbow mode** when hitting corners perfectly!
-- Corner hit counter display
-- Adjustable logo size and speed
-
-See [docs/SCREENSAVERS.md](docs/SCREENSAVERS.md) for detailed configuration and tips.
+Admin endpoints (`/api/admin/*`) need a login session; see [docs/ADMIN_PANEL.md](docs/ADMIN_PANEL.md).
 
 ## Troubleshooting
 
-### Display doesn't light up
-- Check power supply voltage (should be 4.9-5.1V)
-- Verify polarity (reverse polarity destroys panels!)
-- Ensure power supply provides enough current (5A for 64x64)
+| Problem | Try |
+|---|---|
+| Panel stays dark | Check the 5V supply and its polarity; confirm the service is running: `sudo systemctl status spotify-display` |
+| Only half the panel lights / image repeats | Solder the Bonnet's E jumper (64×64 panels) |
+| Garbage or flicker | Raise *GPIO slowdown* (Hardware); make sure *Adapter board* matches your hardware |
+| Red and blue swapped | Change *Colour order* (Hardware) |
+| "Spotify not linked" on the panel | `venv/bin/python src/spotify_auth.py` as your normal user; it reconnects within a minute |
+| Weather on the 8s never appears | Turn it on and add an OpenWeatherMap key (Weather); it starts within the first 45 s of each :x8 minute |
+| Dashboard won't load | `hostname -I` for the Pi's address; it's on port 5000 |
 
-### Wrong colors or flickering
-- Try different `gpio_slowdown` values (2-4)
-- Check all GPIO connections
-- Add 1000μF capacitor across power terminals
+More in [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
-### Spotify not connecting
-- Run `python3 src/spotify_auth.py` to re-authenticate
-- Check Client ID/Secret in config.json
-- Verify redirect URI matches Spotify dashboard
+## Developing without a Pi
 
-### Web interface not accessible
-- Check Pi IP address: `hostname -I`
-- Ensure port 5000 not blocked by firewall
-- Try accessing from same network
+`python3 dev_run.py` opens a window that simulates the 64×64 panel, so you can work on
+modes from a Mac/PC — see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and
+[docs/MAC_SETUP.md](docs/MAC_SETUP.md).
 
-## Advanced Features
-
-### Custom Display Scripts
-
-Create your own display modes in `src/modes/`:
+A display mode is a class with an `update()` method that draws a PIL image and paces
+itself with the helpers in `src/utils/runtime.py`:
 
 ```python
-# src/modes/custom.py
-from PIL import Image, ImageDraw, ImageFont
+# src/modes/hello.py
+from PIL import Image, ImageDraw
+from utils.runtime import mode_sleep
 
-def render(matrix, config):
-    image = Image.new('RGB', (64, 64))
-    draw = ImageDraw.Draw(image)
-    draw.text((10, 10), "Hello!", fill=(255, 255, 255))
-    matrix.SetImage(image)
+class HelloMode:
+    def __init__(self, display, config):
+        self.display = display
+
+    def update(self):
+        image = Image.new('RGB', self.display.get_size())
+        ImageDraw.Draw(image).text((8, 26), "Hello!", fill=(255, 255, 255))
+        self.display.display_image(image)
+        mode_sleep(1)   # returns early if the user switches modes
 ```
 
-### API Endpoints
+Register it in `SpotifyDisplayApp.initialize()` in `src/main.py`.
 
-- `GET /api/status` - Current status and playing track
-- `POST /api/mode` - Switch display mode
-- `POST /api/brightness` - Adjust brightness (0-100)
-- `GET /api/spotify/current` - Current Spotify track info
-- `POST /api/display/text` - Display custom text
-
-## Project Structure
+## Project structure
 
 ```
-rpi-zero-pixel-album-art/
-├── src/
-│   ├── main.py                 # Main application
-│   ├── spotify_client.py       # Spotify API integration
-│   ├── led_display.py          # LED matrix control
-│   ├── web_server.py           # Web interface
-│   ├── modes/                  # Display mode implementations
-│   │   ├── music.py
-│   │   ├── weather.py
-│   │   ├── sports.py
-│   │   ├── clock.py
-│   │   ├── pipes.py            # Windows Pipes screensaver
-│   │   └── dvd_logo.py         # DVD Logo screensaver
-│   └── utils/
-│       ├── image_processor.py  # Image optimization for LED
-│       └── config_manager.py   # Configuration handling
-├── docs/
-│   └── SCREENSAVERS.md         # Screensaver documentation
-├── web/                        # Web interface files
-│   ├── index.html
-│   ├── style.css
-│   └── script.js
-├── install.sh                  # Automated installation
-├── requirements.txt            # Python dependencies
-├── config.example.json         # Configuration template
-├── spotify-display.service     # Systemd service file
-└── README.md
+src/
+  main.py               app, display loop, mode switching
+  led_display.py        LED panel driver wrapper (double-buffered)
+  led_simulator.py      desktop simulator window
+  spotify_client.py     Spotify polling (adaptive)
+  spotify_auth.py       one-time Spotify sign-in
+  web_server.py         dashboard + admin API
+  modes/                music, weather, weather_on_the_8s, sports, clock, pipes, dvd_logo
+  utils/                config, image processing + cache, weather summary, runtime helpers
+web/                    dashboard, admin panel, login page
+docs/                   setup, wiring, admin, screensavers, troubleshooting, demo media
+install.sh              Raspberry Pi installer
+config.example.json     every setting, documented
 ```
-
-## Contributing
-
-Contributions welcome! Please feel free to submit a Pull Request.
-
-## License
-
-MIT License - see LICENSE file for details
 
 ## Acknowledgments
 
 - [rpi-rgb-led-matrix](https://github.com/hzeller/rpi-rgb-led-matrix) by Henner Zeller
-- Spotify Web API
-- Inspired by commercial products like TuneShine
+- Spotify Web API, OpenWeatherMap, ESPN's public scoreboard data
+- The Weather Channel's "Local on the 8s", for the nostalgia
 
-## Support
+## License
 
-For issues and questions:
-- Check [Troubleshooting](#troubleshooting) section
-- Open an issue on GitHub
-- See [docs/](docs/) folder for detailed guides
-
-## Roadmap
-
-- [ ] Apple Music integration
-- [ ] Tidal support
-- [ ] Home Assistant MQTT integration (optional)
-- [ ] Mobile app for control
-- [ ] Multiple panel support
-- [ ] Animated transitions
-- [ ] Voice control via Alexa/Google
-
----
-
-**Total Cost**: $51-81 vs $199 for commercial alternatives
-
-**Setup Time**: ~1 hour including software installation
-
-**Difficulty**: Beginner-friendly with basic Linux knowledge
+MIT — see [LICENSE](LICENSE).

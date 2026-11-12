@@ -47,6 +47,18 @@ The HUB75 connector is the standard 16-pin (2x8) connector on LED matrix panels.
    - Panel power to bonnet's power terminals
    - Or use separate 5V power supply for panel
 
+### ⚠️ 64x64 panels: solder the "E" jumper
+64x64 panels use a fifth address line (E) that the Bonnet doesn't connect by
+default. On the back of the Bonnet, bridge the **E** pad to pad **8** with a
+blob of solder (a few panels use 16 - check your panel's HUB75 pinout). Without
+this, only half the panel lights up or the image repeats.
+
+### Config setting
+`config.example.json` already uses `"hardware_mapping": "adafruit-hat"` for the
+Bonnet. If you wired the panel directly to the GPIO pins instead (Option 2),
+change it to `"regular"`. You can change it from the admin panel too (restart
+the service afterwards).
+
 ### Advantages:
 - No soldering or complex wiring
 - Built-in level shifting

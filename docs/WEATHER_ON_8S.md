@@ -1,431 +1,89 @@
-# Weather on the 8s - Classic Weather Channel Feature
+# Weather on the 8s
 
-A nostalgic recreation of the classic Weather Channel "Local on the 8s" feature that displays detailed weather forecasts every 10 minutes at specific times.
+A nod to The Weather Channel's "Local on the 8s": every ten minutes — at **:08, :18,
+:28, :38, :48 and :58** — the display takes over for about 46 seconds with your local
+forecast, then goes back to whatever was showing (album art, the clock, a screensaver…).
 
-## Overview
+<p align="center"><img src="media/gallery/weather-on-8s.gif" alt="The full Weather on the 8s sequence, looping" width="256"></p>
 
-Remember waiting for the Weather Channel to show your local forecast "on the 8s"? This feature recreates that experience on your LED matrix display!
+*The full sequence, looping — sped up to 2.5 s per screen (the real one is ~46 s).*
 
-**Weather on the 8s automatically displays at:**
-- :08 minutes past the hour
-- :18 minutes past the hour
-- :28 minutes past the hour
-- :38 minutes past the hour
-- :48 minutes past the hour
-- :58 minutes past the hour
+![The seven Weather on the 8s screens](media/weather-on-8s.png)
 
-The display runs for about 90 seconds, showing a complete weather forecast sequence, then returns to your regular display mode.
+| # | Screen | Shows | Time |
+|---|---|---|---|
+| 1 | Intro | "WEATHER on the 8s" | 3 s |
+| 2 | Current | City, temperature, sky, today's high/low | 8 s |
+| 3 | Conditions | Humidity, wind, feels-like, visibility | 8 s |
+| 4–5 | Next hours | Four 3-hour periods: time, temperature, sky, chance of rain (when ≥ 20%) | 8 s each |
+| 6 | 3-day | High/low for the next three days, coloured by the sky | 8 s |
+| 7 | Outro | "That's the local forecast" | 3 s |
 
-## Features
+Times are in the forecast location's own timezone. Screens without data (e.g. no
+forecast) are skipped.
 
-### Classic Presentation Style
+## Animated weather icons
 
-The display mimics the classic Weather Channel aesthetic with:
-- **Intro screen** - "Weather on the 8s" title
-- **Current conditions** - Temperature, description, high/low
-- **Forecast screens** - 3 screens showing upcoming hours
-- **Details screen** - Humidity, wind, visibility, feels-like
-- **Outro screen** - "Thank you for watching"
+<p align="center"><img src="media/weather-icons.gif" alt="Animated weather icons on the current, next hours and 3-day screens" width="320"></p>
 
-### Automatic Triggering
+The current-conditions screen shows a big icon next to the temperature; the next-hours
+and 3-day screens show a small one per period. They're 8-frame pixel-art loops at 10 fps:
 
-Weather on the 8s takes priority over all other display modes during its 90-second window. When the time hits :08, :18, :28, :38, :48, or :58, it automatically:
-1. Interrupts the current display
-2. Shows the weather sequence
-3. Returns to the previous mode when complete
+| Weather | Icon |
+|---|---|
+| Clear | Sun with twinkling rays — or a crescent moon with blinking stars at night |
+| Few clouds | Sun (or moon) peeking out behind a drifting cloud |
+| Cloudy | Drifting cloud |
+| Rain / drizzle | Falling drops |
+| Thunderstorm | Dark cloud, rain and lightning flashes |
+| Snow | Swaying, falling flakes |
+| Fog / mist / haze | Sliding mist bands |
+| Windy (≥ 20 mph, or gusts ≥ 30 mph) | Gusts blowing across the icon, whatever the sky |
 
-### Live Weather Data
+Day or night comes from OpenWeatherMap's own icon codes, so a clear evening gets the moon.
+The icons are drawn in `src/utils/weather_icons.py`; the Matrix Portal version ships sprite
+sheets exported from the same file.
 
-Pulls real-time weather from OpenWeatherMap API including:
-- Current temperature and conditions
-- High and low temperatures
-- Hourly forecast (next 24 hours)
-- Wind speed and direction
-- Humidity percentage
-- Visibility distance
-- "Feels like" temperature
-- Probability of precipitation
+## Turning it on
 
-## Configuration
+Admin panel → **Weather** → **Weather on the 8s** → *Enabled*. It needs an
+[OpenWeatherMap](https://openweathermap.org/api) API key (the free tier is fine). If
+you've already set one up for the Weather mode, leave the Weather on the 8s key, location
+and units blank and it uses those.
 
-### Basic Setup
-
-Edit `config.json` and add your OpenWeatherMap API key:
+Or in `config.json`:
 
 ```json
-{
-  "weather_on_8s": {
-    "enabled": true,
-    "api_key": "your_openweathermap_api_key_here",
-    "location": "New York,US",
-    "units": "imperial",
-    "display_duration": 90
-  }
+"weather_on_8s": {
+  "enabled": true,
+  "api_key": "",
+  "location": "",
+  "units": "",
+  "display_duration": 60
 }
 ```
 
-### Get OpenWeatherMap API Key
+| Key | Meaning |
+|---|---|
+| `enabled` | On/off |
+| `api_key`, `location`, `units` | Blank = use the `weather` section's values. Location is `City,State,Country` (e.g. `Chicago,IL,US`); units `imperial` or `metric` |
+| `display_duration` | Maximum seconds to show (the full sequence is ~46 s) |
 
-1. Sign up at [OpenWeatherMap](https://openweathermap.org/api)
-2. Subscribe to the **free tier** (no credit card required)
-3. Go to "API keys" section
-4. Copy your API key
-5. Paste into `config.json`
+## How it behaves
 
-**Note:** Free tier includes:
-- 1,000 API calls per day (more than enough)
-- Current weather data
-- 5-day forecast
-- No cost!
-
-### Configuration Options
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `enabled` | boolean | `true` | Enable/disable Weather on the 8s |
-| `api_key` | string | `""` | Your OpenWeatherMap API key |
-| `location` | string | `"New York,US"` | City name and country code |
-| `units` | string | `"imperial"` | `imperial` (°F) or `metric` (°C) |
-| `display_duration` | number | `90` | How long to show weather (seconds) |
-
-### Location Format
-
-Specify location as `"City,CountryCode"`:
-- `"New York,US"`
-- `"London,GB"`
-- `"Tokyo,JP"`
-- `"Paris,FR"`
-- `"Sydney,AU"`
-
-Or use city ID for more precision:
-```json
-{
-  "location": "5128581"  // New York City ID
-}
-```
-
-Find city IDs at: http://bulk.openweathermap.org/sample/
-
-## Display Sequence
-
-The Weather on the 8s display shows 7 screens in sequence:
-
-### 1. Intro Screen (3 seconds)
-```
-┌──────────────┐
-│   WEATHER    │
-│   on the     │
-│      8s      │
-└──────────────┘
-```
-
-### 2. Current Conditions (8 seconds)
-```
-┌──────────────┐
-│  New York    │
-│     72°      │
-│ Partly Cloudy│
-│  H:78° L:68° │
-└──────────────┘
-```
-
-### 3-5. Forecast Screens (8 seconds each)
-Shows two time periods per screen:
-```
-┌──────────────┐
-│ 2PM    5PM   │
-│ 75°    73°   │
-│Sunny  Cloudy │
-│ 10%    30%   │
-└──────────────┘
-```
-
-### 6. Details Screen (8 seconds)
-```
-┌──────────────┐
-│   DETAILS    │
-│ Humid: 65%   │
-│ Wind: S 8mph │
-│ Vis: 10mi    │
-│ Feels: 70°   │
-└──────────────┘
-```
-
-### 7. Outro Screen (3 seconds)
-```
-┌──────────────┐
-│  Thank you   │
-│for watching  │
-│              │
-└──────────────┘
-```
-
-**Total duration:** ~46 seconds (configurable up to 120 seconds)
-
-## Usage Examples
-
-### Example 1: Classic Setup
-
-Show weather every 10 minutes, just like the old days:
-
-```json
-{
-  "weather_on_8s": {
-    "enabled": true,
-    "api_key": "abc123...",
-    "location": "Chicago,US",
-    "display_duration": 90
-  }
-}
-```
-
-### Example 2: Quick Updates
-
-Shorter display for faster updates:
-
-```json
-{
-  "weather_on_8s": {
-    "enabled": true,
-    "display_duration": 45
-  }
-}
-```
-
-### Example 3: Metric Units
-
-For international locations:
-
-```json
-{
-  "weather_on_8s": {
-    "enabled": true,
-    "location": "Toronto,CA",
-    "units": "metric"
-  }
-}
-```
-
-### Example 4: Disable Weather on 8s
-
-Keep regular weather mode but disable automatic interruptions:
-
-```json
-{
-  "weather_on_8s": {
-    "enabled": false
-  }
-}
-```
+- **Reliable start:** it starts any time during the first 45 seconds of a :x8 minute, once
+  per slot — even if the display was busy with another mode right at :x8:00.
+- **Fresh data:** weather is fetched a minute ahead (:x7:30) and reused for up to 10
+  minutes, so the sequence starts instantly.
+- **No made-up numbers:** if the weather service can't be reached, it reuses the last
+  forecast if it's under 3 hours old, otherwise it skips that slot.
+- **Gets out of the way:** the test pattern and mode switches still work; when the
+  sequence ends, the previous mode redraws immediately.
 
 ## Troubleshooting
 
-### Weather on 8s Not Showing
-
-**Check configuration:**
-```bash
-# Verify config.json
-cat config.json | grep -A 5 weather_on_8s
-```
-
-**Check logs:**
-```bash
-sudo journalctl -u spotify-display -f | grep -i weather
-```
-
-**Common issues:**
-- API key not configured
-- API key invalid
-- `enabled` set to `false`
-- System time incorrect
-
-### Wrong Location Showing
-
-**Verify location string:**
-- Must be exact city name
-- Include country code
-- Check spelling
-
-**Test API directly:**
-```bash
-curl "https://api.openweathermap.org/data/2.5/weather?q=YourCity,US&appid=YOUR_API_KEY"
-```
-
-### Timing Issues
-
-**Verify system time:**
-```bash
-date
-```
-
-Should show correct time and timezone.
-
-**Sync time:**
-```bash
-sudo timedatectl set-ntp true
-```
-
-### API Rate Limits
-
-Free tier allows 1,000 calls/day.
-
-**Check current usage:**
-- Login to OpenWeatherMap dashboard
-- View API statistics
-
-**Reduce calls:**
-Weather on 8s fetches data once every 10 minutes (144 times/day), well within limits.
-
-## Testing
-
-### Manual Test
-
-Force Weather on 8s to display:
-
-```python
-# test_weather_8s.py
-from src.modes.weather_on_the_8s import WeatherOnThe8sMode
-from src.led_display import LEDDisplay
-import json
-
-# Load config
-with open('config.json') as f:
-    config = json.load(f)
-
-# Initialize
-display = LEDDisplay(config['display'])
-weather = WeatherOnThe8sMode(display, config)
-
-# Force display
-weather.start_display()
-
-# Keep showing for full duration
-import time
-while weather.is_active():
-    weather.update()
-    time.sleep(1)
-```
-
-Run:
-```bash
-python3 test_weather_8s.py
-```
-
-### Wait for Next Trigger
-
-Check when next display will occur:
-
-```bash
-# Current time
-date +%M
-
-# Next trigger will be at :08, :18, :28, :38, :48, or :58
-```
-
-## Tips & Tricks
-
-### Customize Colors
-
-Edit `src/modes/weather_on_the_8s.py`:
-
-```python
-# Change background color
-image = Image.new('RGB', display_size, color=(0, 51, 102))  # Weather blue
-# Try: (0, 0, 0) for black, (20, 20, 40) for dark blue, etc.
-
-# Change text colors
-fill=(255, 255, 255)  # White text
-fill=(255, 255, 0)    # Yellow for temperature
-fill=(200, 255, 200)  # Light green for conditions
-```
-
-### Adjust Timing
-
-Change how long each screen shows:
-
-```python
-# In src/modes/weather_on_the_8s.py
-screen_durations = {
-    'intro': 3,        # Make longer for dramatic effect
-    'current': 8,      # Main screen
-    'forecast_day1': 8,
-    'forecast_day2': 8,
-    'forecast_day3': 8,
-    'details': 8,
-    'outro': 3
-}
-```
-
-### Multiple Locations
-
-Create location rotation by modifying config:
-
-```json
-{
-  "weather_on_8s": {
-    "locations": ["New York,US", "London,GB", "Tokyo,JP"],
-    "rotate": true
-  }
-}
-```
-
-(Requires custom code modification)
-
-## Credits
-
-Inspired by The Weather Channel's legendary "Local on the 8s" feature that aired from 1982-2013.
-
-> "Some of the best TV wasn't TV at all – it was waiting for the local forecast to come on every 10 minutes."
-> — Every 90s kid
-
-## API Information
-
-### OpenWeatherMap Free Tier
-
-- **Cost:** Free
-- **Calls:** 1,000/day
-- **Data:** Current weather + 5-day forecast
-- **Signup:** https://openweathermap.org/api
-
-### Alternative Weather APIs
-
-If you want to use a different weather service, edit `src/modes/weather_on_the_8s.py` to integrate:
-
-- **Weather.gov** (US only, no API key needed)
-- **Tomorrow.io** (formerly ClimaCell)
-- **Weatherbit**
-- **Visual Crossing**
-
-## FAQ
-
-**Q: Can I change when it displays?**
-A: Yes, edit `should_activate()` in `weather_on_the_8s.py`:
-```python
-target_minutes = [8, 18, 28, 38, 48, 58]  # Change these
-```
-
-**Q: Can I make it show on demand?**
-A: Yes, via web interface (feature coming soon) or call:
-```python
-weather_on_8s.start_display()
-```
-
-**Q: Will it interrupt my music?**
-A: Yes, but only for 90 seconds, then music resumes automatically.
-
-**Q: Can I disable it temporarily?**
-A: Yes, set `"enabled": false` in config.json or restart without the feature.
-
-**Q: Does it work offline?**
-A: No, it requires internet connection for weather data. If API fails, it won't display.
-
-## See Also
-
-- [Main README](../README.md)
-- [Configuration Guide](SETUP.md)
-- [Weather Mode Documentation](../README.md#weather-mode)
-- [Troubleshooting Guide](TROUBLESHOOTING.md)
-
----
-
-**Enjoy your nostalgic weather experience! 🌤️**
+| Problem | Fix |
+|---|---|
+| Never appears | Check it's enabled and an API key is set (here or under Weather). The log says `Weather on the 8s skipped: no recent weather data` if fetching fails |
+| Wrong city | Use `City,State,Country`, e.g. `Portland,OR,US` |
+| Times look off | They're local to the forecast location, not the Pi's timezone |

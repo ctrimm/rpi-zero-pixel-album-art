@@ -13,6 +13,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.image_processor import ImageProcessor
+from utils.runtime import wait_for_frame
 
 
 class Pipe:
@@ -102,6 +103,7 @@ class PipesMode:
         self.pipes = []
         self.canvas = None
         self.last_update = 0
+        self._frame_clock = {}
 
         # Initialize
         self._initialize_pipes()
@@ -141,11 +143,10 @@ class PipesMode:
         """Update pipes screensaver"""
         try:
             # Rate limiting for smooth animation
-            current_time = time.time()
-            if current_time - self.last_update < self.speed:
-                return  # Skip frame but don't sleep - keeps animation smooth
-
-            self.last_update = current_time
+            # Sleep until this frame is due (interrupted by mode switches)
+            if not wait_for_frame(self._frame_clock, self.speed):
+                return
+            self.last_update = time.time()
 
             # Fade the canvas slightly for trail effect
             if self.fade_trail:

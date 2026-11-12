@@ -4,12 +4,16 @@ Spotify Authentication Helper
 Standalone script to authenticate with Spotify and cache credentials
 """
 
+import os
 import sys
 import json
 from pathlib import Path
 import spotipy
-from spotipy.oauth2 import SpotifyOAuth
-from spotipy.cache_handler import CacheFileHandler
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from spotify_client import make_auth_manager, browser_available
+from utils.runtime import cache_dir
 
 
 def load_config():
@@ -66,27 +70,30 @@ def main():
     print(f"✓ Client ID: {client_id[:10]}...")
     print(f"✓ Client Secret: {client_secret[:10]}...")
 
-    # Setup cache directory
-    cache_path = Path.home() / '.cache' / 'spotify-display'
-    cache_path.mkdir(parents=True, exist_ok=True)
-    cache_file = cache_path / 'spotify_token_cache'
+    if hasattr(os, 'geteuid') and os.geteuid() == 0:
+        print("❌ Please run this as your normal user, not with sudo.")
+        print("   The display service reads the login from your home directory.")
+        sys.exit(1)
 
+    cache_path = cache_dir()
+    cache_file = cache_path / 'spotify_token_cache'
     print(f"✓ Cache directory: {cache_path}")
 
     # Initialize authentication
     print("\n🔐 Initializing Spotify authentication...")
 
-    try:
-        cache_handler = CacheFileHandler(cache_path=str(cache_file))
+    has_browser = browser_available()
+    if not has_browser:
+        print("""
+No web browser on this machine (normal for a headless Pi). Here's what to do:
+  1. Copy the URL printed below and open it on your phone or computer
+  2. Log in to Spotify and click Agree
+  3. Your browser lands on a 127.0.0.1:8888 page that won't load - that's OK
+  4. Copy that whole URL from the address bar and paste it back here
+""")
 
-        auth_manager = SpotifyOAuth(
-            client_id=client_id,
-            client_secret=client_secret,
-            redirect_uri=spotify_config.get('redirect_uri', 'http://127.0.0.1:8888/callback'),
-            scope=spotify_config.get('scope', 'user-read-currently-playing user-read-playback-state'),
-            cache_handler=cache_handler,
-            open_browser=True
-        )
+    try:
+        auth_manager = make_auth_manager(spotify_config, open_browser=has_browser)
 
         # This will open a browser and prompt for authentication
         sp = spotipy.Spotify(auth_manager=auth_manager)
@@ -119,8 +126,9 @@ def main():
             print("   No track currently playing")
 
         print(f"\n💾 Token cached to: {cache_file}")
-        print("\n✨ Setup complete! You can now run the main application:")
-        print("   python3 src/main.py")
+        print("\n✨ Setup complete! If the display service is already running it will")
+        print("   pick up the login within a minute. Otherwise start it with:")
+        print("   sudo systemctl enable --now spotify-display")
 
     except Exception as e:
         print(f"\n❌ Authentication failed: {e}")

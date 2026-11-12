@@ -4,12 +4,55 @@ Handles authentication and track information retrieval
 """
 
 import os
+import sys
 import logging
 import time
-from pathlib import Path
+import webbrowser
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from spotipy.cache_handler import CacheFileHandler
+
+from utils.runtime import cache_dir
+
+DEFAULT_SCOPE = 'user-read-currently-playing user-read-playback-state'
+
+
+class SpotifyNotAuthorizedError(RuntimeError):
+    """Raised when there is no cached Spotify token and we can't prompt for one."""
+
+
+def browser_available():
+    """True if a local GUI web browser can be opened for the OAuth flow.
+
+    On a headless Pi there is no browser; spotipy would then sit on a local
+    callback server forever without printing the login URL. Detect that so we
+    can use the copy/paste flow instead.
+    """
+    if sys.platform.startswith('linux') and not (
+            os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY')):
+        return False
+    try:
+        webbrowser.get()
+        return True
+    except webbrowser.Error:
+        return False
+
+
+def make_auth_manager(spotify_config, open_browser=None):
+    """Build the SpotifyOAuth manager shared by the app and spotify_auth.py."""
+    if open_browser is None:
+        open_browser = browser_available()
+    token_dir = cache_dir()
+    token_dir.mkdir(parents=True, exist_ok=True)
+    cache_handler = CacheFileHandler(cache_path=str(token_dir / 'spotify_token_cache'))
+    return SpotifyOAuth(
+        client_id=spotify_config['client_id'],
+        client_secret=spotify_config['client_secret'],
+        redirect_uri=spotify_config.get('redirect_uri', 'http://127.0.0.1:8888/callback'),
+        scope=spotify_config.get('scope', DEFAULT_SCOPE),
+        cache_handler=cache_handler,
+        open_browser=open_browser,
+    )
 
 
 class SpotifyClient:
@@ -45,31 +88,25 @@ class SpotifyClient:
         self.poll_min_interval = config.get('poll_min_interval', 1)                    # never poll faster than this
         self.next_poll_time = 0  # wall-clock time when the next API poll is allowed
 
-        self.cache_path = Path.home() / '.cache' / 'spotify-display'
-
         # Cache the last known track info
         self.cached_track_info = None
-
-        # Ensure cache directory exists
-        self.cache_path.mkdir(parents=True, exist_ok=True)
 
         self._initialize_client()
 
     def _initialize_client(self):
         """Initialize Spotipy client with OAuth"""
         try:
-            cache_handler = CacheFileHandler(
-                cache_path=str(self.cache_path / 'spotify_token_cache')
-            )
+            auth_manager = make_auth_manager(self.config)
 
-            auth_manager = SpotifyOAuth(
-                client_id=self.config['client_id'],
-                client_secret=self.config['client_secret'],
-                redirect_uri=self.config['redirect_uri'],
-                scope=self.config.get('scope', 'user-read-currently-playing user-read-playback-state'),
-                cache_handler=cache_handler,
-                open_browser=True
-            )
+            # Running as a service (no terminal): we can't do the interactive
+            # OAuth login, and trying would block or crash. Fail fast with a
+            # clear message instead; the app keeps running without Spotify and
+            # retries periodically, so running spotify_auth.py fixes it live.
+            if auth_manager.cache_handler.get_cached_token() is None and not sys.stdin.isatty():
+                raise SpotifyNotAuthorizedError(
+                    "No Spotify login found. Run 'venv/bin/python src/spotify_auth.py' "
+                    "once (as your normal user, not sudo) to sign in."
+                )
 
             self.sp = spotipy.Spotify(auth_manager=auth_manager)
 
@@ -77,6 +114,8 @@ class SpotifyClient:
             self.sp.current_user()
             self.logger.info("Spotify client initialized successfully")
 
+        except SpotifyNotAuthorizedError:
+            raise  # Expected before first login; the app logs a friendly warning
         except Exception as e:
             self.logger.error(f"Failed to initialize Spotify client: {e}")
             raise
@@ -194,23 +233,31 @@ class SpotifyClient:
         delay = max(self.poll_min_interval, delay)
         self.next_poll_time = now + delay
 
-    def _get_best_album_art(self, images):
+    def _get_best_album_art(self, images, min_size=128):
         """
-        Get the best quality album art URL
+        Pick the album art URL to download.
+
+        Spotify usually offers 640px, 300px and 64px versions. The panel is
+        64x64, so the 640px one (~100-200 KB) is wasted bandwidth and decode
+        time on a Pi Zero. Take the smallest image that's still at least
+        min_size (2x the panel) so downscaling stays sharp - normally 300px.
 
         Args:
             images: List of image objects from Spotify API
 
         Returns:
-            str: URL of the highest resolution image
+            str: URL of the chosen image, or None
         """
         if not images:
             return None
-
-        # Spotify returns images sorted by size (largest first)
-        # For a 64x64 display, we can use the smallest available
-        # But we'll use the largest to maintain quality during processing
-        return images[0]['url']
+        sized = [img for img in images if img.get('width') and img.get('url')]
+        big_enough = [img for img in sized if img['width'] >= min_size]
+        if big_enough:
+            return min(big_enough, key=lambda img: img['width'])['url']
+        if sized:
+            return max(sized, key=lambda img: img['width'])['url']
+        # No size info: Spotify lists largest first
+        return images[0].get('url')
 
     def is_playing(self):
         """

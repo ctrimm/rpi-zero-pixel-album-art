@@ -1,6 +1,12 @@
 """
-Weather on the 8s Mode - Classic Weather Channel Style
-Displays weather forecast every 10 minutes at :08, :18, :28, :38, :48, :58
+Weather on the 8s - Classic Weather Channel style local forecast
+
+Takes over the display at :08, :18, :28, :38, :48 and :58 with a ~46 second
+sequence (intro, current conditions, details, next hours, 3-day, outro), then
+hands the screen back to whatever was showing.
+
+Uses the weather_on_8s settings, falling back to the main weather settings
+for the API key / location / units when those are left blank.
 """
 
 import logging
@@ -13,439 +19,305 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.image_processor import ImageProcessor
+from utils.weather_data import summarize
+from utils import weather_icons
+
+OWM_CURRENT = "https://api.openweathermap.org/data/2.5/weather"
+OWM_FORECAST = "https://api.openweathermap.org/data/2.5/forecast"
+
+TRIGGER_MINUTES = (8, 18, 28, 38, 48, 58)
+LATE_START_LIMIT = 45      # still start if we notice the slot up to this many seconds late
+DATA_MAX_AGE = 600         # refresh data older than 10 minutes
+STALE_LIMIT = 3 * 3600     # never show data older than 3 hours
+
+# Colours (Weather Channel-ish)
+BG_TOP = (0, 12, 70)
+BG_BOTTOM = (10, 40, 120)
+HEADER = (35, 65, 175)
+YELLOW = (255, 214, 0)
+WHITE = (255, 255, 255)
+GREY = (170, 180, 210)
+LIGHT_BLUE = (140, 190, 255)
+COND_COLORS = {
+    "Clear": (255, 214, 0), "Cloudy": (190, 190, 200), "Rain": (90, 160, 255),
+    "Drizzle": (120, 180, 255), "Storms": (255, 140, 40), "Snow": (235, 245, 255),
+}
+
+# (screen, seconds)
+SEQUENCE = (
+    ("intro", 3), ("current", 8), ("details", 8),
+    ("hourly0", 8), ("hourly1", 8), ("daily", 8), ("outro", 3),
+)
+
+
+def _font():
+    try:
+        return ImageFont.load_default_imagefont()   # crisp bitmap font (Pillow >= 10.1)
+    except AttributeError:
+        return ImageFont.load_default()
 
 
 class WeatherOnThe8sMode:
-    """
-    Weather on the 8s - Classic Weather Channel inspired display
-    Shows detailed weather forecast at specific times ending in 8
-    """
+    """Weather on the 8s - takes over the display every 10 minutes."""
 
     def __init__(self, display, config):
-        """
-        Initialize Weather on the 8s mode
-
-        Args:
-            display: LEDDisplay instance
-            config: Configuration dictionary
-        """
         self.logger = logging.getLogger(__name__)
         self.display = display
         self.config = config
-        self.weather_config = config.get('weather_on_8s', {})
-        self.image_processor = ImageProcessor(config.get('image_processing', {}))
+        cfg = config.get('weather_on_8s', {})
+        main = config.get('weather', {})
 
-        # Configuration
-        self.enabled = self.weather_config.get('enabled', True)
-        self.api_key = self.weather_config.get('api_key', '')
-        self.location = self.weather_config.get('location', 'New York,US')
-        self.units = self.weather_config.get('units', 'imperial')
-        self.display_duration = self.weather_config.get('display_duration', 90)  # seconds
+        def pick(key, default):
+            value = cfg.get(key)
+            if not value or str(value).startswith('your_'):
+                value = main.get(key)
+            if not value or str(value).startswith('your_'):
+                value = default
+            return value
 
-        # State
-        self.weather_data = None
-        self.forecast_data = None
-        self.last_fetch = 0
-        self.fetch_interval = 600  # Fetch new data every 10 minutes
+        self.enabled = bool(cfg.get('enabled', False))
+        self.api_key = pick('api_key', '')
+        self.location = pick('location', 'New York,US')
+        self.units = pick('units', 'imperial')
+        self.max_duration = cfg.get('display_duration', 90)
 
-        # Animation state
+        self.font = _font()
+        self.data = None
+        self.fetched_at = 0
         self.animation_start = None
-        self.current_screen = 0
+        self._last_slot = None
+        self._last_screen = None
+        self._sequence = SEQUENCE
+        self._screen_cache = {}
 
-        # Screens to show
-        self.screens = [
-            'intro',
-            'current',
-            'forecast_day1',
-            'forecast_day2',
-            'forecast_day3',
-            'details',
-            'outro'
-        ]
-
-        if not self.api_key:
-            self.logger.warning("Weather on the 8s: No API key configured")
+        if self.enabled and not self.api_key:
+            self.logger.warning("Weather on the 8s: no OpenWeatherMap API key "
+                                "(set one under Weather or Weather on the 8s)")
             self.enabled = False
 
         self.logger.info(f"Weather on the 8s initialized (enabled={self.enabled})")
 
+    # ── Scheduling ──────────────────────────────────────────────────────────
+
+    def _slot(self, now):
+        """The (day, hour, minute) slot if `now` is inside a trigger minute."""
+        if now.minute in TRIGGER_MINUTES and now.second < LATE_START_LIMIT:
+            return (now.day, now.hour, now.minute)
+        return None
+
     def should_activate(self):
-        """
-        Check if current time should trigger Weather on the 8s
-
-        Returns:
-            bool: True if current minute ends in 8
-        """
-        now = datetime.now()
-        minute = now.minute
-        second = now.second
-
-        # Trigger at :08, :18, :28, :38, :48, :58
-        # Give a 5-second window to catch it
-        target_minutes = [8, 18, 28, 38, 48, 58]
-
-        if minute in target_minutes and second < 5:
-            return True
-
-        return False
+        slot = self._slot(datetime.now())
+        return slot is not None and slot != self._last_slot
 
     def is_active(self):
-        """
-        Check if Weather on the 8s is currently displaying
-
-        Returns:
-            bool: True if currently showing weather
-        """
         if self.animation_start is None:
             return False
-
-        elapsed = time.time() - self.animation_start
-        return elapsed < self.display_duration
+        total = min(self.max_duration, sum(d for _, d in self._sequence))
+        return time.time() - self.animation_start < total
 
     def start_display(self):
-        """Start the Weather on the 8s display sequence"""
-        self.logger.info("🌤️ Starting Weather on the 8s display!")
+        """Start the sequence (if we have usable data)."""
+        self._last_slot = self._slot(datetime.now())
+        if time.time() - self.fetched_at > DATA_MAX_AGE:
+            self._fetch_weather_data()
+        if not self.data or time.time() - self.fetched_at > STALE_LIMIT:
+            self.logger.warning("Weather on the 8s skipped: no recent weather data")
+            return
+        # Drop screens we have nothing for
+        seq = []
+        for name, seconds in SEQUENCE:
+            if name.startswith('hourly') and len(self.data['hourly']) < 2 * int(name[-1]) + 1:
+                continue
+            if name == 'daily' and not self.data['daily']:
+                continue
+            seq.append((name, seconds))
+        self._sequence = tuple(seq)
+        self.logger.info("🌤️ Weather on the 8s!")
         self.animation_start = time.time()
-        self.current_screen = 0
-
-        # Fetch fresh weather data
-        self._fetch_weather_data()
+        self._last_screen = None
 
     def update(self):
-        """Update display - called continuously"""
+        """Called every display-loop pass. Returns True while it owns the screen."""
         if not self.enabled:
             return False
-
-        # Check if we should activate
-        if not self.is_active() and self.should_activate():
-            self.start_display()
-
-        # If active, show the sequence
+        if not self.is_active():
+            if self.animation_start is not None:
+                self.animation_start = None   # finished: hand the screen back
+            if self.should_activate():
+                self.start_display()
+            else:
+                # Pre-fetch a minute ahead so the sequence starts instantly
+                now = datetime.now()
+                if now.minute % 10 == 7 and now.second >= 30 and time.time() - self.fetched_at > DATA_MAX_AGE:
+                    self._fetch_weather_data()
         if self.is_active():
             self._render_sequence()
             return True
-
         return False
 
+    # ── Data ────────────────────────────────────────────────────────────────
+
     def _fetch_weather_data(self):
-        """Fetch current weather and forecast from API"""
+        params = {'q': self.location, 'appid': self.api_key, 'units': self.units}
         try:
-            # Check if we should fetch new data
-            current_time = time.time()
-            if current_time - self.last_fetch < self.fetch_interval and self.weather_data:
-                return  # Use cached data
-
-            self.logger.info("Fetching weather data...")
-
-            # Fetch current weather
-            current_url = "https://api.openweathermap.org/data/2.5/weather"
-            current_params = {
-                'q': self.location,
-                'appid': self.api_key,
-                'units': self.units
-            }
-
-            response = requests.get(current_url, params=current_params, timeout=10)
-            response.raise_for_status()
-            self.weather_data = self._parse_current_weather(response.json())
-
-            # Fetch forecast
-            forecast_url = "https://api.openweathermap.org/data/2.5/forecast"
-            forecast_params = {
-                'q': self.location,
-                'appid': self.api_key,
-                'units': self.units,
-                'cnt': 8  # 8 forecasts (24 hours, 3-hour intervals)
-            }
-
-            response = requests.get(forecast_url, params=forecast_params, timeout=10)
-            response.raise_for_status()
-            self.forecast_data = self._parse_forecast(response.json())
-
-            self.last_fetch = current_time
-            self.logger.info("Weather data fetched successfully")
-
+            current = requests.get(OWM_CURRENT, params=params, timeout=10)
+            current.raise_for_status()
+            forecast = requests.get(OWM_FORECAST, params=dict(params, cnt=32), timeout=10)
+            forecast.raise_for_status()
+            self.data = summarize(current.json(), forecast.json(), self.units)
+            self.fetched_at = time.time()
+            self.logger.info(f"Weather on the 8s data: {self.data['temp']}° {self.data['condition']}")
         except Exception as e:
-            self.logger.error(f"Error fetching weather data: {e}")
-            # Create fallback data
-            self.weather_data = self._create_fallback_data()
+            # Keep the previous (recent) data rather than inventing numbers
+            self.logger.error(f"Weather on the 8s fetch failed: {e}")
 
-    def _parse_current_weather(self, data):
-        """Parse current weather API response"""
-        return {
-            'temperature': round(data['main']['temp']),
-            'feels_like': round(data['main']['feels_like']),
-            'temp_min': round(data['main']['temp_min']),
-            'temp_max': round(data['main']['temp_max']),
-            'description': data['weather'][0]['description'].title(),
-            'icon': data['weather'][0]['icon'],
-            'humidity': data['main']['humidity'],
-            'wind_speed': round(data['wind']['speed']),
-            'wind_deg': data['wind'].get('deg', 0),
-            'pressure': data['main']['pressure'],
-            'visibility': data.get('visibility', 0) // 1000,  # Convert to km
-            'city': data['name']
-        }
+    # ── Rendering ───────────────────────────────────────────────────────────
 
-    def _parse_forecast(self, data):
-        """Parse forecast API response"""
-        forecasts = []
-
-        for item in data['list'][:8]:  # Next 24 hours
-            forecasts.append({
-                'time': datetime.fromtimestamp(item['dt']).strftime('%I%p'),
-                'temperature': round(item['main']['temp']),
-                'description': item['weather'][0]['description'].title(),
-                'icon': item['weather'][0]['icon'],
-                'pop': round(item.get('pop', 0) * 100)  # Probability of precipitation
-            })
-
-        return forecasts
-
-    def _create_fallback_data(self):
-        """Create fallback weather data if API fails"""
-        return {
-            'temperature': 72,
-            'feels_like': 70,
-            'temp_min': 68,
-            'temp_max': 78,
-            'description': 'Partly Cloudy',
-            'icon': '02d',
-            'humidity': 65,
-            'wind_speed': 8,
-            'wind_deg': 180,
-            'pressure': 1013,
-            'visibility': 10,
-            'city': self.location.split(',')[0]
-        }
+    def _current_screen(self):
+        elapsed = time.time() - self.animation_start
+        for name, seconds in self._sequence:
+            if elapsed < seconds:
+                return name
+            elapsed -= seconds
+        return self._sequence[-1][0]
 
     def _render_sequence(self):
-        """Render the current screen in the sequence"""
-        elapsed = time.time() - self.animation_start
+        screen = self._current_screen()
+        t = time.time() - self.animation_start
+        frame = int(t * weather_icons.FPS)
+        key = (screen, frame % weather_icons.FRAMES if self._icons_for(screen) else 0)
+        if key == self._last_screen and self.display.current_image is getattr(self, '_last_frame', None):
+            return  # nothing changed (static screen, or same animation frame)
+        self._last_screen = key
+        self.display.display_image(self.render_screen(screen, t))
+        self._last_frame = self.display.current_image
 
-        # Each screen shows for different durations
-        screen_durations = {
-            'intro': 3,
-            'current': 8,
-            'forecast_day1': 8,
-            'forecast_day2': 8,
-            'forecast_day3': 8,
-            'details': 8,
-            'outro': 3
-        }
+    def render_screen(self, screen, t=0.0):
+        """Draw one screen of the sequence at time t (seconds) into it.
+        The static part is cached; only the animated icons are drawn per frame."""
+        base, icons = self._static_screen(screen)
+        if not icons:
+            return base
+        img = base.copy()
+        frame = int(t * weather_icons.FPS)
+        for kind, x, y, scale in icons:
+            icon = weather_icons.frame(kind, frame, scale)
+            img.paste(icon, (x, y), icon)
+        return img
 
-        # Calculate which screen we should be showing
-        cumulative_time = 0
-        current_screen_index = 0
+    def _icons_for(self, screen):
+        return self._static_screen(screen)[1]
 
-        for i, screen in enumerate(self.screens):
-            duration = screen_durations.get(screen, 5)
-            if elapsed < cumulative_time + duration:
-                current_screen_index = i
-                break
-            cumulative_time += duration
+    def _static_screen(self, screen):
+        key = (screen, id(self.data))
+        cached = self._screen_cache.get(key)
+        if cached is None:
+            cached = self._draw_static(screen)
+            self._screen_cache = {k: v for k, v in self._screen_cache.items() if k[1] == id(self.data)}
+            self._screen_cache[key] = cached
+        return cached
 
-        # Render the appropriate screen
-        screen_name = self.screens[current_screen_index]
+    def _draw_static(self, screen):
+        """Background + text for a screen, and where its icons go:
+        returns (image, [(kind, x, y, scale)])."""
+        width, height = self.display.get_size()
+        img = Image.new('RGB', (width, height))
+        draw = ImageDraw.Draw(img)
+        for y in range(height):
+            f = y / max(1, height - 1)
+            draw.line([(0, y), (width, y)], fill=tuple(int(a + (b - a) * f) for a, b in zip(BG_TOP, BG_BOTTOM)))
+        d = self.data or {}
+        sym = '°'
+        icons = []
 
-        if screen_name == 'intro':
-            self._render_intro()
-        elif screen_name == 'current':
-            self._render_current_weather()
-        elif screen_name.startswith('forecast_'):
-            day_index = int(screen_name.split('_')[1].replace('day', '')) - 1
-            self._render_forecast_screen(day_index)
-        elif screen_name == 'details':
-            self._render_details()
-        elif screen_name == 'outro':
-            self._render_outro()
+        if screen == 'intro':
+            self._center(draw, "WEATHER", 6, WHITE)
+            self._center(draw, "on the", 18, GREY)
+            self._big_center(img, "8s", 31, YELLOW)
+        elif screen == 'outro':
+            self._center(draw, "That's the", 16, WHITE)
+            self._center(draw, "local", 28, WHITE)
+            self._center(draw, "forecast", 40, YELLOW)
+        elif screen == 'current':
+            self._header(draw, d.get('city') or "NOW")
+            temp = f"{d.get('temp', '--')}{sym}"
+            temp_w = self._w(temp) * 2
+            # Big (24px) icon beside the big temperature; small icon if the
+            # temperature needs the room (e.g. "100°", "-12°")
+            big = temp_w <= width - 28
+            kind = d.get('kind') or 'cloud'
+            icons.append((kind, 2, 14 if big else 20, 2 if big else 1))
+            if d.get('windy'):
+                icons.append(('wind', 2, 14 if big else 20, 2 if big else 1))
+            self._big_text(img, temp, width - 1 - temp_w, 15 if big else 16, YELLOW)
+            cond = d.get('condition', '')
+            self._center(draw, cond, 40, COND_COLORS.get(cond, WHITE))
+            if d.get('hi') is not None:
+                self._center(draw, f"H{d['hi']}{sym} L{d['lo']}{sym}", 51, LIGHT_BLUE)
+        elif screen == 'details':
+            self._header(draw, "CONDITIONS")
+            rows = [("Hum", f"{d.get('humidity', '--')}%"), ("Wind", d.get('wind', '--')),
+                    ("Feel", f"{d.get('feels', '--')}{sym}"), ("Vis", d.get('visibility') or '--')]
+            for i, (label, value) in enumerate(rows):
+                y = 15 + i * 12
+                draw.text((2, y), label, font=self.font, fill=LIGHT_BLUE)
+                draw.text((width - 2 - self._w(value), y), value, font=self.font, fill=WHITE)
+        elif screen.startswith('hourly'):
+            self._header(draw, "NEXT HOURS")
+            start = 2 * int(screen[-1])
+            for col, h in enumerate(d.get('hourly', [])[start:start + 2]):
+                cx = 16 + col * 32
+                self._center(draw, h['time'], 13, WHITE, cx)
+                icons.append((h.get('kind') or 'cloud', cx - 6, 24, 1))
+                self._center(draw, f"{h['temp']}{sym}", 37, YELLOW, cx)
+                if h.get('pop', 0) >= 20:
+                    self._center(draw, f"{h['pop']}%", 48, LIGHT_BLUE, cx)
+            draw.line([(32, 15), (32, 60)], fill=HEADER)
+        elif screen == 'daily':
+            self._header(draw, "3-DAY")
+            for i, day in enumerate(d.get('daily', [])[:3]):
+                y = 15 + i * 16
+                draw.text((1, y + 1), day['day'], font=self.font, fill=WHITE)
+                icons.append((day.get('kind') or 'cloud', 20, y, 1))
+                # High (yellow) and low (light blue), right-aligned
+                hi, lo = str(day['hi']), str(day['lo'])
+                lo_x = width - 2 - self._w(lo)
+                hi_x = lo_x - 3 - self._w(hi)
+                draw.text((hi_x, y + 1), hi, font=self.font, fill=YELLOW)
+                draw.text((lo_x, y + 1), lo, font=self.font, fill=LIGHT_BLUE)
+        return img, icons
 
-    def _render_intro(self):
-        """Render intro screen with classic styling"""
-        display_size = self.display.get_size()
-        image = Image.new('RGB', display_size, color=(0, 51, 102))  # Classic weather blue
-        draw = ImageDraw.Draw(image)
-        font = ImageFont.load_default()
+    def _w(self, text):
+        return int(self.font.getlength(text)) if hasattr(self.font, 'getlength') else self.font.getbbox(text)[2]
 
-        # Title
-        title = "WEATHER"
-        bbox = draw.textbbox((0, 0), title, font=font)
-        text_width = bbox[2] - bbox[0]
-        draw.text(((display_size[0] - text_width) // 2, 15), title,
-                 font=font, fill=(255, 255, 255))
+    def _fit(self, text, max_width):
+        while text and self._w(text) > max_width:
+            text = text[:-1]
+        return text
 
-        # Subtitle
-        subtitle = "on the"
-        bbox = draw.textbbox((0, 0), subtitle, font=font)
-        text_width = bbox[2] - bbox[0]
-        draw.text(((display_size[0] - text_width) // 2, 28), subtitle,
-                 font=font, fill=(200, 200, 200))
+    def _center(self, draw, text, y, color, cx=None):
+        width = self.display.get_size()[0]
+        max_w = width - 2 if cx is None else 31
+        text = self._fit(str(text), max_w)
+        cx = width // 2 if cx is None else cx
+        draw.text((cx - self._w(text) // 2, y), text, font=self.font, fill=color)
 
-        # "8s" in large text
-        eights = "8s"
-        bbox = draw.textbbox((0, 0), eights, font=font)
-        text_width = bbox[2] - bbox[0]
-        draw.text(((display_size[0] - text_width) // 2, 40), eights,
-                 font=font, fill=(255, 255, 0))
+    def _header(self, draw, text):
+        width = self.display.get_size()[0]
+        draw.rectangle([0, 0, width - 1, 11], fill=HEADER)
+        self._center(draw, str(text).upper(), 1, YELLOW)
 
-        self.display.display_image(image)
+    def _big_text(self, img, text, x, y, color):
+        """2x pixel-doubled text at (x, y)."""
+        w = self._w(text)
+        mask = Image.new('L', (max(1, w), 11))
+        ImageDraw.Draw(mask).text((0, 0), text, font=self.font, fill=255)
+        img.paste(color, (x, y), mask.resize((w * 2, 22), Image.NEAREST))
 
-    def _render_current_weather(self):
-        """Render current weather conditions"""
-        if not self.weather_data:
-            return
-
-        display_size = self.display.get_size()
-        image = Image.new('RGB', display_size, color=(0, 51, 102))
-        draw = ImageDraw.Draw(image)
-        font = ImageFont.load_default()
-
-        # City name at top
-        city = self.weather_data['city'][:12]  # Truncate if needed
-        bbox = draw.textbbox((0, 0), city, font=font)
-        text_width = bbox[2] - bbox[0]
-        draw.text(((display_size[0] - text_width) // 2, 2), city,
-                 font=font, fill=(255, 255, 255))
-
-        # Temperature - large
-        temp_text = f"{self.weather_data['temperature']}°"
-        bbox = draw.textbbox((0, 0), temp_text, font=font)
-        text_width = bbox[2] - bbox[0]
-        draw.text(((display_size[0] - text_width) // 2, 18), temp_text,
-                 font=font, fill=(255, 255, 0))
-
-        # Condition description
-        desc = self.weather_data['description'][:15]
-        bbox = draw.textbbox((0, 0), desc, font=font)
-        text_width = bbox[2] - bbox[0]
-        draw.text(((display_size[0] - text_width) // 2, 35), desc,
-                 font=font, fill=(200, 255, 200))
-
-        # High/Low
-        hl_text = f"H:{self.weather_data['temp_max']}° L:{self.weather_data['temp_min']}°"
-        bbox = draw.textbbox((0, 0), hl_text, font=font)
-        text_width = bbox[2] - bbox[0]
-        draw.text(((display_size[0] - text_width) // 2, 48), hl_text,
-                 font=font, fill=(150, 200, 255))
-
-        self.display.display_image(image)
-
-    def _render_forecast_screen(self, day_index):
-        """Render forecast for a specific time period"""
-        if not self.forecast_data or day_index * 2 >= len(self.forecast_data):
-            return
-
-        display_size = self.display.get_size()
-        image = Image.new('RGB', display_size, color=(0, 51, 102))
-        draw = ImageDraw.Draw(image)
-        font = ImageFont.load_default()
-
-        # Show two forecast periods side by side
-        forecasts = self.forecast_data[day_index * 2:(day_index * 2) + 2]
-
-        for i, forecast in enumerate(forecasts):
-            x_offset = i * (display_size[0] // 2)
-
-            # Time
-            time_text = forecast['time']
-            bbox = draw.textbbox((0, 0), time_text, font=font)
-            text_width = bbox[2] - bbox[0]
-            draw.text((x_offset + (display_size[0] // 4) - text_width // 2, 5),
-                     time_text, font=font, fill=(255, 255, 255))
-
-            # Temperature
-            temp_text = f"{forecast['temperature']}°"
-            bbox = draw.textbbox((0, 0), temp_text, font=font)
-            text_width = bbox[2] - bbox[0]
-            draw.text((x_offset + (display_size[0] // 4) - text_width // 2, 20),
-                     temp_text, font=font, fill=(255, 255, 0))
-
-            # Condition (abbreviated)
-            condition = forecast['description'][:8]
-            bbox = draw.textbbox((0, 0), condition, font=font)
-            text_width = bbox[2] - bbox[0]
-            draw.text((x_offset + (display_size[0] // 4) - text_width // 2, 35),
-                     condition, font=font, fill=(200, 255, 200))
-
-            # Precipitation chance if significant
-            if forecast['pop'] > 20:
-                pop_text = f"{forecast['pop']}%"
-                bbox = draw.textbbox((0, 0), pop_text, font=font)
-                text_width = bbox[2] - bbox[0]
-                draw.text((x_offset + (display_size[0] // 4) - text_width // 2, 50),
-                         pop_text, font=font, fill=(100, 200, 255))
-
-        self.display.display_image(image)
-
-    def _render_details(self):
-        """Render detailed weather information"""
-        if not self.weather_data:
-            return
-
-        display_size = self.display.get_size()
-        image = Image.new('RGB', display_size, color=(0, 51, 102))
-        draw = ImageDraw.Draw(image)
-        font = ImageFont.load_default()
-
-        # Details title
-        draw.text((2, 2), "DETAILS", font=font, fill=(255, 255, 255))
-
-        # Humidity
-        draw.text((2, 14), f"Humid: {self.weather_data['humidity']}%",
-                 font=font, fill=(200, 255, 200))
-
-        # Wind
-        wind_dir = self._get_wind_direction(self.weather_data['wind_deg'])
-        unit = "mph" if self.units == "imperial" else "m/s"
-        draw.text((2, 26), f"Wind: {wind_dir} {self.weather_data['wind_speed']}{unit}",
-                 font=font, fill=(200, 255, 200))
-
-        # Visibility
-        vis_unit = "mi" if self.units == "imperial" else "km"
-        draw.text((2, 38), f"Vis: {self.weather_data['visibility']}{vis_unit}",
-                 font=font, fill=(200, 255, 200))
-
-        # Feels like
-        draw.text((2, 50), f"Feels: {self.weather_data['feels_like']}°",
-                 font=font, fill=(200, 255, 200))
-
-        self.display.display_image(image)
-
-    def _render_outro(self):
-        """Render outro screen"""
-        display_size = self.display.get_size()
-        image = Image.new('RGB', display_size, color=(0, 51, 102))
-        draw = ImageDraw.Draw(image)
-        font = ImageFont.load_default()
-
-        # Thank you message
-        text = "Thank you"
-        bbox = draw.textbbox((0, 0), text, font=font)
-        text_width = bbox[2] - bbox[0]
-        draw.text(((display_size[0] - text_width) // 2, 20), text,
-                 font=font, fill=(255, 255, 255))
-
-        text2 = "for watching"
-        bbox = draw.textbbox((0, 0), text2, font=font)
-        text_width = bbox[2] - bbox[0]
-        draw.text(((display_size[0] - text_width) // 2, 35), text2,
-                 font=font, fill=(255, 255, 255))
-
-        self.display.display_image(image)
-
-    def _get_wind_direction(self, degrees):
-        """Convert wind degrees to cardinal direction"""
-        directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
-        index = round(degrees / 45) % 8
-        return directions[index]
-
-    def _display_error(self):
-        """Display error message"""
-        display_size = self.display.get_size()
-        error = self.image_processor.create_text_image(
-            "Weather\nError",
-            display_size,
-            color=(255, 100, 100)
-        )
-        self.display.display_image(error)
+    def _big_center(self, img, text, y, color):
+        """2x pixel-doubled text (chunky, crisp on LEDs)."""
+        w = self._w(text)
+        mask = Image.new('L', (max(1, w), 11))
+        ImageDraw.Draw(mask).text((0, 0), text, font=self.font, fill=255)
+        mask = mask.resize((w * 2, 22), Image.NEAREST)
+        img.paste(color, ((img.width - w * 2) // 2, y), mask)

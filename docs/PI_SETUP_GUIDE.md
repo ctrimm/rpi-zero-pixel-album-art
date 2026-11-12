@@ -456,7 +456,7 @@ Get a free API key from https://openweathermap.org/api
 ### 7.3 Authenticate with Spotify
 
 ```bash
-python3 src/spotify_auth.py
+venv/bin/python src/spotify_auth.py
 ```
 
 **Follow the prompts:**
@@ -491,7 +491,7 @@ Then run:
 
 ```bash
 cd ~/rpi-zero-pixel-album-art
-python3 src/main.py
+sudo venv/bin/python src/main.py
 ```
 
 **You should see:**
@@ -654,7 +654,7 @@ nano ~/rpi-zero-pixel-album-art/config.json
 # Re-authenticate
 cd ~/rpi-zero-pixel-album-art
 rm -rf ~/.cache/spotify-display/
-python3 src/spotify_auth.py
+venv/bin/python src/spotify_auth.py
 
 # Check credentials
 cat config.json | grep spotify -A 5
@@ -677,7 +677,7 @@ python3 -c "import json; json.load(open('~/rpi-zero-pixel-album-art/config.json'
 
 # Test manually
 cd ~/rpi-zero-pixel-album-art
-python3 src/main.py
+sudo venv/bin/python src/main.py
 # Look for error messages
 ```
 
@@ -739,7 +739,7 @@ sudo journalctl -u spotify-display -n 100  # Last 100 lines
 
 # Manual run (for testing)
 cd ~/rpi-zero-pixel-album-art
-python3 src/main.py
+sudo venv/bin/python src/main.py
 
 # Update application
 cd ~/rpi-zero-pixel-album-art
