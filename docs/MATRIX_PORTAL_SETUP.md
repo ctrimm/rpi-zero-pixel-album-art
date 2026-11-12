@@ -37,6 +37,12 @@ WiFi co-processor.
 | Test pattern / clear | From the dashboard |
 | Watchdog, WiFi auto-reconnect, last-good caching | For an always-on display |
 
+<p align="center"><img src="media/demo-matrix-portal.gif" alt="Simulated morning on the Matrix Portal" width="320"></p>
+
+**Weather on the 8s** on the Matrix Portal:
+
+![Weather on the 8s screens on the Matrix Portal](media/weather-on-8s-matrix-portal.png)
+
 ---
 
 ## Part 1 — Install CircuitPython
