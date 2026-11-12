@@ -74,7 +74,9 @@ function updateUI(status) {
     }
 
     // Update Spotify status
-    const spotifyStatus = status.spotify_playing ? 'Playing' : 'Not Playing';
+    const spotifyStatus = status.spotify_connected === false
+        ? 'Not linked'
+        : (status.spotify_playing ? 'Playing' : 'Not Playing');
     document.getElementById('spotifyStatus').textContent = spotifyStatus;
 
     // Update display status
@@ -192,7 +194,7 @@ async function testDisplay() {
         if (!response.ok) throw new Error('Failed to display test pattern');
 
         console.log('Test pattern displayed');
-        alert('Test pattern displayed on LED matrix');
+        alert('Test pattern is showing on the LED matrix for 5 seconds');
 
     } catch (error) {
         console.error('Error displaying test pattern:', error);

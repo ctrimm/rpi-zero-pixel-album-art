@@ -1,10 +1,18 @@
 """
 Sports Mode - Display live scores and game information
+
+Uses ESPN's public scoreboard feed (no API key needed) to find the configured
+team's game for the current week/day and shows the score, game clock and team
+records. When sports is disabled in the config it shows clearly-labelled demo
+data instead, so the mode can still be previewed.
 """
 
 import logging
+import random
 import time
-from datetime import datetime
+from datetime import datetime, timezone
+
+import requests
 from PIL import Image, ImageDraw, ImageFont
 import sys
 import os
@@ -12,26 +20,29 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.image_processor import ImageProcessor
+from utils.runtime import mode_sleep
 
-try:
-    from espn_api.football import League as NFLLeague
-    from espn_api.basketball import League as NBALeague
-    ESPN_API_AVAILABLE = True
-except ImportError:
-    ESPN_API_AVAILABLE = False
+ESPN_SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/{path}/scoreboard"
+
+LEAGUE_PATHS = {
+    'NFL': 'football/nfl',
+    'NBA': 'basketball/nba',
+    'WNBA': 'basketball/wnba',
+    'MLB': 'baseball/mlb',
+    'NHL': 'hockey/nhl',
+    'MLS': 'soccer/usa.1',
+    'NCAAF': 'football/college-football',
+    'NCAAM': 'basketball/mens-college-basketball',
+}
+
+# How often to refresh when there's no live game (seconds)
+IDLE_REFRESH = 600
 
 
 class SportsMode:
     """Sports mode - displays live scores and game information"""
 
     def __init__(self, display, config):
-        """
-        Initialize sports mode
-
-        Args:
-            display: LEDDisplay instance
-            config: Configuration dictionary
-        """
         self.logger = logging.getLogger(__name__)
         self.display = display
         self.config = config
@@ -39,236 +50,247 @@ class SportsMode:
         self.image_processor = ImageProcessor(config.get('image_processing', {}))
 
         self.enabled = self.sports_config.get('enabled', False)
-        self.league = self.sports_config.get('league', 'NFL')
-        self.team = self.sports_config.get('team', 'NO')
+        self.league = str(self.sports_config.get('league', 'NFL')).upper()
+        self.team = str(self.sports_config.get('team', 'NO')).upper()
         self.update_interval = self.sports_config.get('update_interval', 60)
 
         self.last_update = 0
         self.game_data = None
+        self.fetch_failed = False
 
-        if self.enabled and not ESPN_API_AVAILABLE:
-            self.logger.warning("Sports mode enabled but ESPN API not available")
-            self.enabled = False
+        if self.enabled and self.league not in LEAGUE_PATHS:
+            self.logger.warning(
+                f"Unknown league '{self.league}'. Supported: {', '.join(LEAGUE_PATHS)}"
+            )
 
-        self.logger.info(f"Sports mode initialized (enabled={self.enabled}, team={self.team})")
+        self.logger.info(f"Sports mode initialized (enabled={self.enabled}, league={self.league}, team={self.team})")
+
+    # ------------------------------------------------------------------ update
 
     def update(self):
         """Update sports display"""
-        # Always show demo data if ESPN API is not available or not configured
-        show_demo = not self.enabled or not ESPN_API_AVAILABLE
-
         try:
-            # Check if we need to fetch new data
-            current_time = time.time()
-            if current_time - self.last_update >= self.update_interval or self.game_data is None:
-                self.game_data = self._fetch_game_data(demo=show_demo)
-                self.last_update = current_time
+            now = time.time()
+            if self._needs_refresh(now):
+                if self.enabled:
+                    data = self._fetch_game_data()
+                    # Keep showing the last good data through a brief outage
+                    if data is not None or not self.fetch_failed:
+                        self.game_data = data
+                else:
+                    self.game_data = self._demo_game_data()
+                self.last_update = now
 
-            # Display game info
-            if self.game_data:
-                self._display_game(self.game_data, demo=show_demo)
+            if self.enabled and self.fetch_failed and self.game_data is None:
+                self._display_message("Sports\nOffline", (255, 120, 100))
+            elif self.game_data:
+                self._display_game(self.game_data)
             else:
-                self._display_no_game()
+                self._display_message(f"{self.team}\nNo game", (140, 140, 140))
 
-            time.sleep(5)
+            mode_sleep(5)
 
         except Exception as e:
-            self.logger.error(f"Error in sports mode update: {e}")
-            self._display_error()
-            time.sleep(10)
+            self.logger.error(f"Error in sports mode update: {e}", exc_info=True)
+            self._display_message("Sports\nError", (255, 100, 100))
+            mode_sleep(10)
 
-    def _fetch_game_data(self, demo=False):
-        """
-        Fetch game data for configured team
+    def _needs_refresh(self, now):
+        if self.game_data is None and self.last_update == 0:
+            return True
+        live = bool(self.game_data and self.game_data.get('state') == 'in')
+        interval = self.update_interval if (live or not self.enabled) else IDLE_REFRESH
+        return now - self.last_update >= interval
 
-        Args:
-            demo: If True, return demo/mock data
+    # ------------------------------------------------------------------- data
 
-        Returns:
-            dict: Game data or None
-        """
+    def _fetch_game_data(self):
+        """Fetch the configured team's current game from ESPN. None if no game."""
+        path = LEAGUE_PATHS.get(self.league)
+        if not path:
+            self.fetch_failed = True
+            return None
         try:
-            if demo or not self.enabled:
-                # Return demo data showing a close game with stats
-                import random
-
-                # Vary the score slightly each time for visual interest
-                team_score = random.randint(17, 31)
-                opp_score = team_score + random.randint(-7, 7)
-
-                game_info = {
-                    'team_abbr': self.team,
-                    'opponent_abbr': 'ATL',
-                    'team_score': max(0, team_score),
-                    'opponent_score': max(0, opp_score),
-                    'status': 'DEMO',  # Mark as demo
-                    'quarter': '3rd',
-                    'time_remaining': '7:42',
-                    'demo': True,
-                    # Add some stats
-                    'team_stats': {
-                        'passing_yards': 287,
-                        'rushing_yards': 112,
-                        'turnovers': 1
-                    },
-                    'opp_stats': {
-                        'passing_yards': 245,
-                        'rushing_yards': 98,
-                        'turnovers': 2
-                    }
-                }
-
-                self.logger.info(f"Demo game data: {game_info['team_abbr']} {game_info['team_score']} - {game_info['opponent_score']} {game_info['opponent_abbr']}")
-                return game_info
-
-            # Real ESPN API implementation would go here
-            # For now, even with enabled=True, we show demo data
-            return self._fetch_game_data(demo=True)
-
+            response = requests.get(ESPN_SCOREBOARD.format(path=path), timeout=10)
+            response.raise_for_status()
+            events = response.json().get('events', [])
+            self.fetch_failed = False
         except Exception as e:
-            self.logger.error(f"Error fetching game data: {e}")
+            self.logger.error(f"Error fetching {self.league} scoreboard: {e}")
+            self.fetch_failed = True
             return None
 
-    def _display_game(self, game_data, demo=False):
-        """
-        Display game information
+        for event in events:
+            competition = (event.get('competitions') or [{}])[0]
+            competitors = competition.get('competitors', [])
+            abbrs = [c.get('team', {}).get('abbreviation', '').upper() for c in competitors]
+            if self.team in abbrs and len(competitors) == 2:
+                return self._parse_competition(competition, event)
 
-        Args:
-            game_data: Game data dictionary
-            demo: If True, show demo indicator
-        """
+        self.logger.info(f"No {self.league} game found for {self.team} on the current scoreboard")
+        return None
+
+    def _parse_competition(self, competition, event):
+        """Turn an ESPN competition into the dict the renderer uses."""
+        def team_info(c):
+            team = c.get('team', {})
+            records = c.get('records') or []
+            return {
+                'abbr': team.get('abbreviation', '???').upper(),
+                'score': c.get('score', '0') or '0',
+                'color': _hex_to_rgb(team.get('color')),
+                'alt_color': _hex_to_rgb(team.get('alternateColor')),
+                'record': records[0].get('summary') if records else None,
+                'home': c.get('homeAway') == 'home',
+            }
+
+        teams = [team_info(c) for c in competition.get('competitors', [])]
+        ours = next(t for t in teams if t['abbr'] == self.team)
+        theirs = next(t for t in teams if t is not ours)
+        status = competition.get('status') or event.get('status') or {}
+        status_type = status.get('type', {})
+        state = status_type.get('state', 'pre')  # pre / in / post
+
+        return {
+            'team': ours,
+            'opponent': theirs,
+            'state': state,
+            'status_text': self._status_text(state, status, competition.get('date') or event.get('date')),
+            'demo': False,
+        }
+
+    def _status_text(self, state, status, date_str):
+        """Short status line that fits on 64px: 'Q3 7:42', 'FINAL', 'SUN 1PM'."""
+        status_type = status.get('type', {})
+        if state == 'post':
+            detail = status_type.get('shortDetail', 'Final').upper()
+            return 'FINAL' if detail.startswith('FINAL') and len(detail) > 9 else detail[:10]
+        if state == 'in':
+            period = status.get('period', 0)
+            clock = status.get('displayClock', '')
+            prefix = {'NFL': 'Q', 'NCAAF': 'Q', 'NBA': 'Q', 'WNBA': 'Q', 'NHL': 'P', 'MLB': 'INN'}.get(self.league, '')
+            if self.league in ('MLB', 'MLS'):
+                return status_type.get('shortDetail', '')[:10].upper()
+            if status_type.get('name') == 'STATUS_HALFTIME':
+                return 'HALF'
+            return f"{prefix}{period} {clock}".strip()[:10]
+        # Scheduled: show local day + time
         try:
-            display_size = self.display.get_size()
-            width, height = display_size
+            start = datetime.strptime(date_str, '%Y-%m-%dT%H:%MZ').replace(tzinfo=timezone.utc).astimezone()
+            hour = start.strftime('%I').lstrip('0')
+            minute = start.strftime('%M')
+            ampm = start.strftime('%p')[0]
+            when = f"{hour}{'' if minute == '00' else ':' + minute}{ampm}"
+            return f"{start.strftime('%a').upper()} {when}"
+        except (TypeError, ValueError):
+            return 'SOON'
 
-            # Create multi-screen display that cycles through different views
-            current_second = int(time.time() % 15)  # Cycle every 15 seconds
+    def _demo_game_data(self):
+        """Clearly-labelled sample data shown when sports is disabled."""
+        team_score = random.randint(17, 31)
+        opp_score = max(0, team_score + random.randint(-7, 7))
+        return {
+            'team': {'abbr': self.team, 'score': str(team_score), 'color': (0, 80, 160),
+                     'alt_color': (255, 255, 255), 'record': '7-3', 'home': True},
+            'opponent': {'abbr': 'ATL', 'score': str(opp_score), 'color': (160, 20, 40),
+                         'alt_color': (255, 255, 255), 'record': '5-5', 'home': False},
+            'state': 'in',
+            'status_text': 'Q3 7:42',
+            'demo': True,
+        }
 
-            if current_second < 5:
-                # Screen 1: Score
-                self._display_score_screen(game_data, demo)
-            elif current_second < 10:
-                # Screen 2: Team stats
-                self._display_stats_screen(game_data, team=True)
-            else:
-                # Screen 3: Opponent stats
-                self._display_stats_screen(game_data, team=False)
+    # -------------------------------------------------------------- rendering
 
-        except Exception as e:
-            self.logger.error(f"Error displaying game: {e}")
-            self._display_error()
-
-    def _display_score_screen(self, game_data, demo=False):
-        """Display the score screen"""
-        display_size = self.display.get_size()
-        width, height = display_size
-
-        # Green field background
-        image = Image.new('RGB', display_size, color=(20, 60, 20))
-        draw = ImageDraw.Draw(image)
-        font = ImageFont.load_default()
-
-        # Determine colors based on who's winning
-        team_score = game_data['team_score']
-        opp_score = game_data['opponent_score']
-
-        team_color = (100, 255, 100) if team_score > opp_score else (255, 255, 255)
-        opp_color = (100, 255, 100) if opp_score > team_score else (200, 200, 200)
-
-        # Draw team abbr and score (top)
-        team_text = game_data['team_abbr']
-        score_text = str(team_score)
-
-        draw.text((2, 8), team_text, font=font, fill=team_color)
-        draw.text((width - 15, 8), score_text, font=font, fill=team_color)
-
-        # Draw VS in middle
-        draw.text((width // 2 - 6, height // 2 - 4), "VS", font=font, fill=(180, 180, 180))
-
-        # Draw opponent abbr and score (bottom)
-        opp_text = game_data['opponent_abbr']
-        opp_score_text = str(opp_score)
-
-        draw.text((2, height - 16), opp_text, font=font, fill=opp_color)
-        draw.text((width - 15, height - 16), opp_score_text, font=font, fill=opp_color)
-
-        # Draw status/quarter
-        if game_data.get('demo'):
-            status_text = "DEMO"
-            draw.text((2, 2), status_text, font=font, fill=(255, 200, 100))
-        elif game_data['status'] == 'IN_PROGRESS':
-            status_text = game_data['quarter']
-            draw.text((width // 2 - 8, 2), status_text, font=font, fill=(255, 200, 100))
-
-        self.display.display_image(image)
-
-    def _display_stats_screen(self, game_data, team=True):
-        """Display team or opponent stats"""
-        display_size = self.display.get_size()
-        width, height = display_size
-
-        image = Image.new('RGB', display_size, color=(10, 10, 40))
-        draw = ImageDraw.Draw(image)
-        font = ImageFont.load_default()
-
-        if team:
-            abbr = game_data['team_abbr']
-            stats = game_data.get('team_stats', {})
-            color = (100, 200, 255)
+    def _display_game(self, game):
+        """Alternate between the score and the team records every 5 seconds."""
+        has_records = game['team'].get('record') or game['opponent'].get('record')
+        if has_records and int(time.time() // 5) % 3 == 2:
+            self._render_records(game)
         else:
-            abbr = game_data['opponent_abbr']
-            stats = game_data.get('opp_stats', {})
-            color = (255, 150, 100)
+            self._render_score(game)
 
-        # Draw team name
-        draw.text((2, 2), abbr, font=font, fill=color)
-        draw.text((width - 30, 2), "STATS", font=font, fill=(150, 150, 150))
+    def _render_score(self, game):
+        width, height = self.display.get_size()
+        image = Image.new('RGB', (width, height), (0, 0, 0))
+        draw = ImageDraw.Draw(image)
+        font = ImageFont.load_default()
 
-        # Draw stats
-        y_pos = 14
-        if 'passing_yards' in stats:
-            text = f"Pass: {stats['passing_yards']}"
-            draw.text((2, y_pos), text, font=font, fill=(255, 255, 255))
-            y_pos += 10
+        # Away team on top, home team below (scoreboard convention)
+        away, home = (game['opponent'], game['team']) if game['team']['home'] else (game['team'], game['opponent'])
+        show_scores = game['state'] != 'pre'
 
-        if 'rushing_yards' in stats:
-            text = f"Rush: {stats['rushing_yards']}"
-            draw.text((2, y_pos), text, font=font, fill=(255, 255, 255))
-            y_pos += 10
+        for row, team in enumerate((away, home)):
+            top = 4 + row * 22
+            bar = _team_bar_color(team['color'])
+            draw.rectangle([0, top, width - 1, top + 17], fill=bar)
+            ink = (0, 0, 0) if _luminance(bar) > 150 else (255, 255, 255)
+            draw.text((3, top + 3), team['abbr'][:4], font=font, fill=ink)
+            if show_scores:
+                score = str(team['score'])
+                w = _text_width(draw, score, font)
+                winning = _score_val(team) > _score_val(away if team is home else home)
+                draw.text((width - w - 3, top + 3), score, font=font, fill=ink)
+                if winning and game['state'] == 'post':
+                    draw.rectangle([width - w - 3, top + 15, width - 4, top + 15], fill=ink)
 
-        if 'turnovers' in stats:
-            text = f"TO: {stats['turnovers']}"
-            to_color = (255, 100, 100) if stats['turnovers'] > 0 else (100, 255, 100)
-            draw.text((2, y_pos), text, font=font, fill=to_color)
+        status = 'DEMO' if game.get('demo') else game['status_text']
+        status_color = (255, 170, 60) if game.get('demo') else (
+            (255, 80, 80) if game['state'] == 'in' else (170, 170, 170))
+        w = _text_width(draw, status, font)
+        draw.text(((width - w) // 2, height - 14), status, font=font, fill=status_color)
 
         self.display.display_image(image)
 
-    def _display_no_game(self):
-        """Display message when no game is active"""
-        display_size = self.display.get_size()
-        placeholder = self.image_processor.create_text_image(
-            f"{self.team}\nNo Game",
-            display_size,
-            color=(100, 100, 100)
-        )
-        self.display.display_image(placeholder)
+    def _render_records(self, game):
+        width, height = self.display.get_size()
+        image = Image.new('RGB', (width, height), (0, 0, 0))
+        draw = ImageDraw.Draw(image)
+        font = ImageFont.load_default()
 
-    def _display_disabled_message(self):
-        """Display message when sports mode is disabled"""
-        display_size = self.display.get_size()
-        placeholder = self.image_processor.create_text_image(
-            "Sports\nDisabled",
-            display_size,
-            color=(100, 100, 100)
-        )
-        self.display.display_image(placeholder)
+        title = 'RECORD'
+        draw.text(((width - _text_width(draw, title, font)) // 2, 2), title, font=font, fill=(150, 150, 150))
+        for row, team in enumerate((game['team'], game['opponent'])):
+            y = 20 + row * 18
+            draw.rectangle([2, y + 2, 5, y + 10], fill=_team_bar_color(team['color'], boost=True))
+            draw.text((9, y), team['abbr'][:4], font=font, fill=(255, 255, 255))
+            record = team.get('record') or '-'
+            draw.text((width - _text_width(draw, record, font) - 2, y), record, font=font, fill=(200, 200, 200))
 
-    def _display_error(self):
-        """Display error message"""
-        display_size = self.display.get_size()
-        error = self.image_processor.create_text_image(
-            "Sports\nError",
-            display_size,
-            color=(255, 100, 100)
-        )
-        self.display.display_image(error)
+        self.display.display_image(image)
+
+    def _display_message(self, text, color):
+        image = self.image_processor.create_text_image(text, self.display.get_size(), color=color)
+        self.display.display_image(image)
+
+
+def _hex_to_rgb(value):
+    try:
+        value = (value or '').lstrip('#')
+        return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return (60, 60, 60)
+
+
+def _team_bar_color(rgb, boost=False):
+    """Team colour, nudged so very dark colours still show up on LEDs."""
+    r, g, b = rgb
+    if max(r, g, b) < 70:
+        r, g, b = (min(255, c + 70) for c in (r, g, b))
+    return (r, g, b) if boost else tuple(int(c * 0.8) for c in (r, g, b))
+
+
+def _luminance(rgb):
+    r, g, b = rgb
+    return 0.299 * r + 0.587 * g + 0.114 * b
+
+
+def _text_width(draw, text, font):
+    bbox = draw.textbbox((0, 0), text, font=font)
+    return bbox[2] - bbox[0]
+
+
+def _score_val(team):
+    try:
+        return int(team['score'])
+    except (TypeError, ValueError):
+        return 0

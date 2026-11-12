@@ -184,7 +184,8 @@ class WeatherOnThe8sMode:
             'wind_speed': round(data['wind']['speed']),
             'wind_deg': data['wind'].get('deg', 0),
             'pressure': data['main']['pressure'],
-            'visibility': data.get('visibility', 0) // 1000,  # Convert to km
+            # API gives metres; show miles for imperial, km otherwise
+            'visibility': round(data.get('visibility', 0) / (1609.34 if self.units == 'imperial' else 1000)),
             'city': data['name']
         }
 
@@ -391,24 +392,20 @@ class WeatherOnThe8sMode:
         # Details title
         draw.text((2, 2), "DETAILS", font=font, fill=(255, 255, 255))
 
-        # Humidity
-        draw.text((2, 14), f"Humid: {self.weather_data['humidity']}%",
-                 font=font, fill=(200, 255, 200))
-
-        # Wind
+        # Label on the left, value right-aligned, so long values never clip
         wind_dir = self._get_wind_direction(self.weather_data['wind_deg'])
-        unit = "mph" if self.units == "imperial" else "m/s"
-        draw.text((2, 26), f"Wind: {wind_dir} {self.weather_data['wind_speed']}{unit}",
-                 font=font, fill=(200, 255, 200))
-
-        # Visibility
-        vis_unit = "mi" if self.units == "imperial" else "km"
-        draw.text((2, 38), f"Vis: {self.weather_data['visibility']}{vis_unit}",
-                 font=font, fill=(200, 255, 200))
-
-        # Feels like
-        draw.text((2, 50), f"Feels: {self.weather_data['feels_like']}°",
-                 font=font, fill=(200, 255, 200))
+        rows = [
+            ("Hum", f"{self.weather_data['humidity']}%"),
+            ("Wind", f"{wind_dir}{self.weather_data['wind_speed']}"),
+            ("Vis", f"{self.weather_data['visibility']}{'mi' if self.units == 'imperial' else 'km'}"),
+            ("Feel", f"{self.weather_data['feels_like']}°"),
+        ]
+        for i, (label, value) in enumerate(rows):
+            y = 14 + i * 12
+            draw.text((2, y), label, font=font, fill=(150, 200, 255))
+            bbox = draw.textbbox((0, 0), value, font=font)
+            draw.text((display_size[0] - (bbox[2] - bbox[0]) - 2, y), value,
+                     font=font, fill=(200, 255, 200))
 
         self.display.display_image(image)
 
