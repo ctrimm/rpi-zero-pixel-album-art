@@ -92,6 +92,7 @@ The file is commented; the useful extras:
 
 | Setting | Default | |
 |---|---|---|
+| `SHOW_TRACK_INFO` | `1` | song + artist over the album art (long names scroll); `0` = art only. With the companion, its admin panel (*Now playing*) controls this |
 | `CLOCK_STYLE` | `digital` | or `analog` |
 | `TIME_FORMAT` | `12h` | or `24h` |
 | `AUTO_SWITCH` | `1` | album art when music starts, `FALLBACK_MODE` when it stops |

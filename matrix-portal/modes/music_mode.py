@@ -40,7 +40,7 @@ _STATUS_Y = 22
 
 
 class MusicMode:
-    def __init__(self, display, network, now_playing, companion_url=""):
+    def __init__(self, display, network, now_playing, companion_url="", show_info=True):
         self.display = display
         self.network = network
         self.now_playing = now_playing
@@ -58,6 +58,7 @@ class MusicMode:
         self._seen_version = -1
         self._art_key = None
         self._last_progress_cols = -1
+        self.show_info = show_info   # artist/title + progress bar overlay
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -99,6 +100,7 @@ class MusicMode:
         )
         self._group.append(self._progress_grid)
 
+        self._apply_show_info()
         self.display.root_group = self._group
         self._seen_version = -1
         self._art_key = None
@@ -119,6 +121,22 @@ class MusicMode:
         self._status_label = None
         gc.collect()
 
+    def set_show_info(self, show):
+        """Show or hide the artist/title (and progress bar) over the art."""
+        show = bool(show)
+        if show != self.show_info:
+            self.show_info = show
+            self._apply_show_info()
+
+    def _apply_show_info(self):
+        if self._group is None:
+            return
+        hidden = not self.show_info
+        self._band_grid.hidden = hidden
+        self._artist_scroller.label.hidden = hidden
+        self._title_scroller.label.hidden = hidden
+        self._progress_grid.hidden = hidden
+
     def update(self):
         np = self.now_playing
         if np.version != self._seen_version:
@@ -133,10 +151,11 @@ class MusicMode:
             elif not np.available:
                 self._show_status("Not set up")
 
-        # Animate scrolling text + progress bar
-        self._artist_scroller.update()
-        self._title_scroller.update()
-        self._update_progress_bar()
+        # Animate scrolling text + progress bar (skipped while hidden)
+        if self.show_info:
+            self._artist_scroller.update()
+            self._title_scroller.update()
+            self._update_progress_bar()
 
     # ------------------------------------------------------------------
     # Rendering

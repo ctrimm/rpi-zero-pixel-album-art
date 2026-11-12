@@ -31,6 +31,9 @@ ESPN_TEAM = "LAL"
 BRIGHTNESS = 50
 # music, weather, sports, clock, screensaver
 DEFAULT_MODE = "music"
+# Show the song and artist over the album art (long names scroll). 1 = on, 0 = off.
+# With the companion, its admin panel controls this instead.
+SHOW_TRACK_INFO = 1
 # digital or analog
 CLOCK_STYLE = "digital"
 # 12h or 24h

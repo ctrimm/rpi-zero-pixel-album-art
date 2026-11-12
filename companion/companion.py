@@ -82,6 +82,7 @@ DEFAULT_CONFIG = {
     "display": {
         "brightness": 50,
         "mode": "music",
+        "show_track_info": True,
     },
     "image_processing": {
         "enhance_contrast": True,
@@ -394,6 +395,7 @@ def matrix_status():
             }
             _state["device_seen"] = time.time()
         reply = {k: _state[k] for k in ("mode", "mode_seq", "brightness", "command", "command_seq")}
+    reply["show_track_info"] = bool(config["display"].get("show_track_info", True))
     reply["track"] = _track_for_device(spotify_mgr.track())
     return jsonify(reply)
 
@@ -556,6 +558,12 @@ ADMIN_SCHEMA = {
                                           ["screensaver", "Screensaver"]]},
          ], "note": "Clock style, time format, auto-switching and schedules are set in the board's "
                     "<code>settings.toml</code>."}]},
+        {"id": "nowplaying", "icon": "🎶", "title": "Now playing", "desc": "The music screen.",
+         "cards": [{"title": "Song info", "fields": [
+             {"path": "display.show_track_info", "label": "Show song & artist", "type": "toggle", "def": True,
+              "help": "Shown over the bottom of the album art with a progress bar. Long names scroll. "
+                      "Turn off for album art only."},
+         ]}]},
         {"id": "spotify", "icon": "🎵", "title": "Spotify", "desc": "Credentials from developer.spotify.com/dashboard.",
          "cards": [{"title": "Connection", "status": "spotify", "fields": [
              {"path": "spotify.client_id", "label": "Client ID", "type": "text"},

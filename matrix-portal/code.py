@@ -63,6 +63,7 @@ ESPN_LEAGUE    = _setting("ESPN_LEAGUE", "NBA")
 ESPN_TEAM      = _setting("ESPN_TEAM", "LAL")
 
 CLOCK_STYLE    = _setting("CLOCK_STYLE", "digital")
+SHOW_TRACK_INFO = bool(_int_setting("SHOW_TRACK_INFO", 1))
 TIME_FORMAT    = _setting("TIME_FORMAT", "12h")
 AUTO_SWITCH    = _int_setting("AUTO_SWITCH", 1)
 FALLBACK_MODE  = _setting("FALLBACK_MODE", "clock")
@@ -224,7 +225,8 @@ _mode_constructors = {
 def _register_modes():
     from modes.music_mode import MusicMode
     _mode_constructors["music"] = lambda: MusicMode(
-        display, network, now_playing, companion_url=COMPANION_URL)
+        display, network, now_playing, companion_url=COMPANION_URL,
+        show_info=SHOW_TRACK_INFO)
 
     from modes.weather_mode import WeatherMode
     _mode_constructors["weather"] = lambda: WeatherMode(
@@ -416,6 +418,7 @@ def poll_companion():
     """One request for everything: mode/brightness changes from the web UI,
     dashboard commands, and the current Spotify track. Also reports this
     device's state so the dashboard shows what's really on screen."""
+    global SHOW_TRACK_INFO
     url = (f"{COMPANION_URL}/api/matrix/status?mode={current_mode_name}"
            f"&manual={1 if manual_mode else 0}&brightness={current_brightness}"
            f"&board={BOARD_NAME}")
@@ -443,6 +446,16 @@ def poll_companion():
         _seen["command_seq"] = cseq
         if not first and data.get("command") in ("test_pattern", "clear"):
             show_overlay(data["command"], 5 if data["command"] == "test_pattern" else 3)
+
+    # Song/artist overlay on/off (admin panel). The companion is the source
+    # of truth when it sends the setting; settings.toml is the default.
+    if "show_track_info" in data:
+        show = bool(data["show_track_info"])
+        if show != SHOW_TRACK_INFO:
+            SHOW_TRACK_INFO = show
+            music = _mode_instances.get("music")
+            if music is not None:
+                music.set_show_info(show)
 
     if "track" in data:
         now_playing.apply_companion(data.get("track"))
