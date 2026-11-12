@@ -4,6 +4,10 @@ A nod to The Weather Channel's "Local on the 8s": every ten minutes — at **:08
 :28, :38, :48 and :58** — the display takes over for about 46 seconds with your local
 forecast, then goes back to whatever was showing (album art, the clock, a screensaver…).
 
+<p align="center"><img src="media/gallery/weather-on-8s.gif" alt="The full Weather on the 8s sequence, looping" width="256"></p>
+
+*The full sequence, looping — sped up to 2.5 s per screen (the real one is ~46 s).*
+
 ![The seven Weather on the 8s screens](media/weather-on-8s.png)
 
 | # | Screen | Shows | Time |

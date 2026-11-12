@@ -20,6 +20,18 @@ names are made up). The panel switches on its own: album art while music plays, 
 clock when it stops, a local forecast every ten minutes, and whatever you pick from your
 phone in between.*
 
+## Gallery
+
+Each mode on its own, looping (also rendered from the real display code):
+
+| Music | Weather on the 8s | Live sports |
+|:---:|:---:|:---:|
+| <img src="docs/media/gallery/music.gif" alt="Album art with the artist and a long song title scrolling along the bottom" width="200"> | <img src="docs/media/gallery/weather-on-8s.gif" alt="The full Weather on the 8s sequence with animated weather icons" width="200"> | <img src="docs/media/gallery/sports.gif" alt="Live score in team colours, then both teams' records" width="200"> |
+| Long names scroll, then reset | The full sequence, sped up (2.5 s per screen) | Score and game clock, then records |
+| **Clock** | **Pipes** | **DVD logo** |
+| <img src="docs/media/gallery/clock.gif" alt="Analog clock with a ticking second hand" width="200"> | <img src="docs/media/gallery/pipes.gif" alt="Pipes screensaver: coloured pipes growing and fading" width="200"> | <img src="docs/media/gallery/dvd-logo.gif" alt="Bouncing DVD logo changing colour, with a perfect corner hit" width="200"> |
+| Analog or digital | Windows-style 3D pipes | Watch for the corner hit (counter bottom-right) |
+
 ## Features
 
 - 🎵 **Album art** for the current Spotify track, tuned for LEDs (contrast/saturation),

@@ -1,5 +1,10 @@
 # Retro Screensavers
 
+| Pipes | DVD logo |
+|:---:|:---:|
+| <img src="media/gallery/pipes.gif" alt="Pipes screensaver" width="200"> | <img src="media/gallery/dvd-logo.gif" alt="DVD logo screensaver with a corner hit" width="200"> |
+
+
 Add a nostalgic touch to your LED matrix display with classic screensavers! This feature brings two iconic screensavers to your Raspberry Pi LED matrix: Windows 3D Pipes and the bouncing DVD logo.
 
 ## Features
