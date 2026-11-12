@@ -63,11 +63,11 @@
   },
   "weather_on_8s": {
     "enabled": false,
-    "api_key": "your_openweathermap_api_key_here",
-    "location": "Arlington,Virginia,US",
-    "units": "imperial",
-    "display_duration": 90,
-    "comment": "Classic Weather Channel style - shows at :08, :18, :28, :38, :48, :58"
+    "api_key": "",
+    "location": "",
+    "units": "",
+    "display_duration": 60,
+    "comment": "Classic Weather Channel style - takes over at :08, :18, :28, :38, :48, :58 for ~46s. Leave api_key/location/units blank to use the weather section's. display_duration is the maximum."
   },
   "sports": {
     "enabled": false,
