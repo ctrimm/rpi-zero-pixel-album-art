@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS launchd agent for the Matrix Portal companion.
+  Easiest path: run companion/services/install_service.sh, which fills in the
+  correct absolute paths for your machine. If installing by hand, replace every
+  __REPO__ below with the absolute path to your checkout, then:
+    cp com.matrixportal.companion.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.matrixportal.companion.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.matrixportal.companion</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__REPO__/companion/venv/bin/python</string>
+        <string>__REPO__/companion/companion.py</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>__REPO__/companion</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/matrixportal-companion.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/matrixportal-companion.err</string>
+</dict>
+</plist>

@@ -33,6 +33,10 @@ config.dev.json
 *.key
 *.pem
 
+# Matrix Portal companion (generated, may contain Spotify secret/token)
+companion/companion_config.json
+companion/.spotify_token.json
+
 # Spotify cache
 .cache/
 .cache-*

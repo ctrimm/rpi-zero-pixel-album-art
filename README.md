@@ -3,11 +3,12 @@
 Turn a 64×64 RGB LED panel into a little always-on display for your desk or wall:
 album art for whatever's playing on Spotify, a clock, weather, live sports scores, a
 retro "Weather on the 8s" forecast and a couple of screensavers. It runs entirely on a
-Raspberry Pi on your own network — no Home Assistant or cloud service needed.
+Raspberry Pi — or an Adafruit **Matrix Portal** — on your own network, no Home Assistant
+or cloud service needed.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
-![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi-red)
+![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20%7C%20Matrix%20Portal-red)
 
 ## What it's like to have one
 
@@ -50,9 +51,19 @@ Each mode on its own, looping (also rendered from the real display code):
 - 📱 **Web dashboard** on your network: switch modes, brightness, test pattern, now playing.
 - 🔐 **Admin panel**: every setting in a proper form (or raw JSON), applied live — no restarts.
 
-Prefer a microcontroller to a Pi? An **Adafruit Matrix Portal** (S3 or M4) version lives on
-the [`claude/port-matrix-portal-LFL6w`](https://github.com/ctrimm/rpi-zero-pixel-album-art/tree/claude/port-matrix-portal-LFL6w)
-branch.
+## Two ways to build it
+
+| | Raspberry Pi + RGB Matrix Bonnet | Adafruit Matrix Portal S3 / M4 |
+|---|---|---|
+| Runs | Python on Linux | CircuitPython firmware (`matrix-portal/`) |
+| Setup | `install.sh` | Copy files to the board |
+| Web dashboard / admin | On the Pi | On the [companion](companion/) (any always-on computer — a Pi works) |
+| Album art | ✅ | ✅ with the companion; ✅ standalone on the S3 |
+| Everything else above | ✅ | ✅ (Weather mode, Weather on the 8s, sports, clock, screensavers) |
+| Soldering | E jumper for 64×64 | None |
+
+The rest of this page covers the Pi. For the Matrix Portal see
+[below](#matrix-portal-version) and **[docs/MATRIX_PORTAL_SETUP.md](docs/MATRIX_PORTAL_SETUP.md)**.
 
 ## Hardware
 
@@ -200,15 +211,36 @@ src/
   web_server.py         dashboard + admin API
   modes/                music, weather, weather_on_the_8s, sports, clock, pipes, dvd_logo
   utils/                config, image processing + cache, weather summary, runtime helpers
-web/                    dashboard, admin panel, login page
+web/                    dashboard, admin panel, login page (shared with the companion)
+matrix-portal/          CircuitPython firmware for the Matrix Portal S3 / M4
+companion/              companion server for the Matrix Portal
 docs/                   setup, wiring, admin, screensavers, troubleshooting, demo media
 install.sh              Raspberry Pi installer
 config.example.json     every setting, documented
 ```
 
+## Matrix Portal version
+
+<p align="center">
+  <img src="docs/media/demo-matrix-portal.gif" alt="The same morning on an Adafruit Matrix Portal: album art from the companion with scrolling artist and title and a progress bar, the digital clock, Weather on the 8s, live sports, Pipes and the DVD logo" width="320">
+</p>
+
+*The same morning on a Matrix Portal, rendered from the real CircuitPython firmware
+(running on a desktop stand-in for CircuitPython). Note the progress bar under the song
+info and the digital clock.*
+
+The `matrix-portal/` firmware runs on the **Matrix Portal S3** (ESP32-S3) and the older
+**M4**, and detects which one it's on. The optional `companion/` server — run it on any
+always-on computer, including a Pi — handles Spotify sign-in, LED-tuned album art, weather
+and sports, and serves the same dashboard and admin panel as the Pi version. On an S3 you
+can also run fully standalone: it decodes Spotify's album art on the board.
+
+Setup, settings and troubleshooting: **[docs/MATRIX_PORTAL_SETUP.md](docs/MATRIX_PORTAL_SETUP.md)**.
+
 ## Acknowledgments
 
 - [rpi-rgb-led-matrix](https://github.com/hzeller/rpi-rgb-led-matrix) by Henner Zeller
+- [CircuitPython](https://circuitpython.org) and Adafruit's display libraries
 - Spotify Web API, OpenWeatherMap, ESPN's public scoreboard data
 - The Weather Channel's "Local on the 8s", for the nostalgia
 

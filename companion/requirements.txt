@@ -1,0 +1,12 @@
+# Matrix Portal companion. It reuses the Pi app's modules in ../src, so these
+# match the main requirements.txt.
+Flask>=3.0.0
+Flask-CORS>=4.0.0
+spotipy>=2.24.0
+Pillow>=10.1.0
+requests>=2.31.0
+cachetools>=5.3.0
+
+# Optional: mDNS advertising so the device can reach the companion at
+# http://matrixportal-companion.local:5001 instead of a hardcoded IP.
+zeroconf>=0.130.0

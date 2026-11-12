@@ -61,7 +61,41 @@ async function refreshStatus() {
 }
 
 // Update UI with status data
+// Friendly names for mode buttons the page doesn't have built in
+const MODE_LABELS = {
+    music: '🎵 Music', weather: '🌤️ Weather', sports: '⚽ Sports', clock: '🕐 Clock',
+    pipes: '🔧 Pipes', dvd_logo: '📀 DVD Logo', screensaver: '✨ Screensaver',
+};
+
+// Match the mode buttons to the modes this server actually supports (the
+// Matrix Portal companion has a different set than the Pi app).
+function syncModeButtons(modes) {
+    if (!Array.isArray(modes) || !modes.length) return;
+    const selector = document.querySelector('.mode-selector');
+    if (!selector) return;
+    modes.forEach(mode => {
+        if (!selector.querySelector(`.mode-btn[data-mode="${mode}"]`)) {
+            const btn = document.createElement('button');
+            btn.className = 'mode-btn';
+            btn.dataset.mode = mode;
+            btn.textContent = MODE_LABELS[mode] || mode;
+            btn.addEventListener('click', () => switchMode(mode));
+            selector.appendChild(btn);
+        }
+    });
+    selector.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.style.display = modes.includes(btn.dataset.mode) ? '' : 'none';
+    });
+}
+
 function updateUI(status) {
+    syncModeButtons(status.available_modes);
+    // Servers without the Pi's config layout use the admin panel only
+    if (status.quick_settings === false) {
+        const quick = document.getElementById('settingsSection');
+        if (quick) { quick.dataset.disabled = '1'; quick.style.display = 'none'; }
+    }
+
     // Update current mode
     document.getElementById('currentMode').textContent = status.current_mode || '-';
 
@@ -271,7 +305,7 @@ function updateAuthUI() {
     if (isAuthenticated) {
         authBtn.textContent = 'Logout';
         authBtn.classList.add('logout');
-        settingsSection.style.display = 'block';
+        settingsSection.style.display = settingsSection.dataset.disabled ? 'none' : 'block';
     } else {
         authBtn.textContent = 'Login';
         authBtn.classList.remove('logout');

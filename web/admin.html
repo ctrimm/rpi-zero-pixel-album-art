@@ -343,12 +343,14 @@
     // ------------------------------------------------------------------
     // Settings schema. Each field maps to a dotted path in config.json.
     // ------------------------------------------------------------------
-    const MODES = [
+    // Built-in schema for the Pi app. A server can replace it via GET
+    // /api/admin/schema (the Matrix Portal companion does).
+    let MODES = [
         ['music', 'Music (album art)'], ['clock', 'Clock'], ['weather', 'Weather'],
         ['sports', 'Sports'], ['pipes', 'Pipes screensaver'], ['dvd_logo', 'DVD logo screensaver'],
     ];
 
-    const SECTIONS = [
+    let SECTIONS = [
         {
             id: 'general', icon: '🎛️', title: 'General', desc: 'What the display shows and when.',
             cards: [
@@ -654,7 +656,8 @@
         const config = configOverride ? clone(configOverride) : clone(draft);
         if (!configOverride && newPassword) {
             if (newPassword.length < 6) { toast('Password must be at least 6 characters', true); return false; }
-            setPath(config, 'web_server.admin_password', newPassword);
+            const pwField = allFields().find(f => f.type === 'newpassword');
+            if (pwField) setPath(config, pwField.path, newPassword);
         }
         if (document.querySelector('.input.invalid')) { toast('Fix the highlighted values first', true); return false; }
 
@@ -723,7 +726,25 @@
     // ------------------------------------------------------------------
     // Status tiles
     // ------------------------------------------------------------------
-    const MODE_NAMES = Object.fromEntries(MODES.map(([k, v]) => [k, v.replace(/ \(.*\)| screensaver/, '')]));
+    let MODE_NAMES = {};
+    function computeModeNames() {
+        MODE_NAMES = Object.fromEntries(MODES.map(([k, v]) => [k, v.replace(/ \(.*\)| screensaver/, '')]));
+    }
+    computeModeNames();
+
+    async function loadServerSchema() {
+        try {
+            const r = await fetch('/api/admin/schema');
+            if (!r.ok) return;
+            const schema = await r.json();
+            if (Array.isArray(schema.modes)) { MODES = schema.modes; computeModeNames(); }
+            if (Array.isArray(schema.sections)) {
+                const advanced = SECTIONS.find(s => s.json);
+                SECTIONS = schema.sections.concat(schema.sections.some(s => s.json) ? [] : [advanced]);
+            }
+            if (schema.subtitle) document.querySelector('.brand-sub').textContent = schema.subtitle;
+        } catch (e) { /* use the built-in schema */ }
+    }
 
     async function refreshStatus() {
         try {
@@ -731,7 +752,12 @@
             const s = await res.json();
             lastStatus = s;
             $('#statMode').textContent = MODE_NAMES[s.current_mode] || s.current_mode || '–';
-            $('#statModeSub').textContent = s.manual_mode ? 'Picked manually' : 'Automatic';
+            if (s.device && s.device.online === false) {
+                $('#statModeSub').textContent = s.device.last_seen ? 'Board offline' : 'Board not connected yet';
+            } else {
+                $('#statModeSub').textContent = (s.device && s.device.board ? `Matrix Portal ${s.device.board} · ` : '')
+                    + (s.manual_mode ? 'Picked manually' : 'Automatic');
+            }
             $('#statBrightness').textContent = s.brightness + '%';
             $('#statUptime').textContent = formatUptime(s.uptime);
 
@@ -794,6 +820,7 @@
     window.addEventListener('beforeunload', e => { if (draft && isDirty()) { e.preventDefault(); e.returnValue = ''; } });
 
     async function init() {
+        await loadServerSchema();
         renderNav();
         if (!await checkPasswordBanner()) return;
         const r = await api('/api/admin/config');
