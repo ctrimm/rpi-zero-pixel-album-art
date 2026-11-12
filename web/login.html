@@ -3,171 +3,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Login - Spotify LED Matrix Display</title>
+    <title>Sign in · LED Matrix Display</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        :root {
+            --bg: #0f0f10; --surface: #18181a; --surface-2: #202023; --border: #2e2e33;
+            --text: #f2f2f3; --muted: #a1a1aa; --faint: #71717a;
+            --accent: #1DB954; --accent-hover: #1ed760; --accent-soft: rgba(29, 185, 84, 0.12);
+            --danger: #f04a4a;
         }
-
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Ubuntu, sans-serif;
+            background: radial-gradient(1200px 600px at 50% -10%, rgba(29, 185, 84, 0.10), transparent 60%), var(--bg);
+            color: var(--text); min-height: 100vh;
+            display: flex; align-items: center; justify-content: center; padding: 24px 16px;
+            -webkit-font-smoothing: antialiased;
         }
-
         .login-container {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            padding: 40px;
-            width: 100%;
-            max-width: 400px;
-            animation: slideIn 0.5s ease-out;
+            width: 100%; max-width: 380px; background: var(--surface);
+            border: 1px solid var(--border); border-radius: 16px; padding: 32px 28px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
         }
-
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(-30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        .logo { text-align: center; margin-bottom: 28px; }
+        .brand-mark {
+            width: 48px; height: 48px; margin: 0 auto 14px; border-radius: 10px; padding: 7px;
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px;
+            background: #000; border: 1px solid var(--border);
         }
-
-        .logo {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
-        .logo h1 {
-            color: #667eea;
-            font-size: 28px;
-            margin-bottom: 10px;
-        }
-
-        .logo p {
-            color: #888;
-            font-size: 14px;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-group label {
-            display: block;
-            color: #333;
-            font-weight: 500;
-            margin-bottom: 8px;
-            font-size: 14px;
-        }
-
+        .brand-mark span { border-radius: 50%; background: var(--accent); opacity: .25; }
+        .brand-mark span.on { opacity: 1; }
+        .logo h1 { font-size: 1.4rem; }
+        .logo p { color: var(--muted); font-size: .9rem; margin-top: 4px; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; font-size: .85rem; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
         .form-group input {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 14px;
-            transition: all 0.3s;
+            width: 100%; padding: 11px 14px; border-radius: 8px; font: inherit; color: var(--text);
+            background: var(--bg); border: 1px solid var(--border); outline: none;
+            transition: border-color .15s, box-shadow .15s;
         }
-
-        .form-group input:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
+        .form-group input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
         .btn {
-            width: 100%;
-            padding: 14px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%; margin-top: 8px; padding: 12px; border: none; border-radius: 999px;
+            background: var(--accent); color: #04140a; font: inherit; font-weight: 700; cursor: pointer;
+            transition: background .15s, transform .05s;
         }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
-        }
-
-        .btn:active {
-            transform: translateY(0);
-        }
-
-        .btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .message {
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            font-size: 14px;
-            display: none;
-        }
-
-        .message.error {
-            background: #fee;
-            color: #c33;
-            border: 1px solid #fcc;
-            display: block;
-        }
-
-        .message.success {
-            background: #efe;
-            color: #3c3;
-            border: 1px solid #cfc;
-            display: block;
-        }
-
-        .back-link {
-            text-align: center;
-            margin-top: 20px;
-        }
-
-        .back-link a {
-            color: #667eea;
-            text-decoration: none;
-            font-size: 14px;
-        }
-
-        .back-link a:hover {
-            text-decoration: underline;
-        }
-
-        .loading {
-            display: none;
-            text-align: center;
-            color: #888;
-            font-size: 14px;
-            margin-top: 15px;
-        }
-
-        .loading.active {
-            display: block;
-        }
+        .btn:hover { background: var(--accent-hover); }
+        .btn:active { transform: translateY(1px); }
+        .btn:disabled { opacity: .6; cursor: default; }
+        .message { display: none; padding: 10px 12px; border-radius: 8px; font-size: .88rem; margin-bottom: 16px; }
+        .message.error { background: rgba(240, 74, 74, 0.12); color: #fca5a5; border: 1px solid rgba(240, 74, 74, 0.35); }
+        .message.success { background: var(--accent-soft); color: var(--accent); border: 1px solid rgba(29, 185, 84, 0.35); }
+        .loading { display: none; text-align: center; color: var(--muted); font-size: .88rem; margin-top: 12px; }
+        .loading.active { display: block; }
+        .back-link { text-align: center; margin-top: 22px; }
+        .back-link a { color: var(--faint); text-decoration: none; font-size: .88rem; }
+        .back-link a:hover { color: var(--text); }
     </style>
 </head>
 <body>
     <div class="login-container">
         <div class="logo">
-            <h1>🎵 Admin Login</h1>
-            <p>Spotify LED Matrix Display</p>
+            <div class="brand-mark" aria-hidden="true">
+                <span class="on"></span><span></span><span></span><span class="on"></span>
+                <span></span><span class="on"></span><span class="on"></span><span></span>
+                <span></span><span class="on"></span><span class="on"></span><span></span>
+                <span class="on"></span><span></span><span></span><span class="on"></span>
+            </div>
+            <h1>Admin sign in</h1>
+            <p>LED Matrix Display</p>
         </div>
 
         <div id="message" class="message"></div>
