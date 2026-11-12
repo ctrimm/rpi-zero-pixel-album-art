@@ -233,23 +233,31 @@ class SpotifyClient:
         delay = max(self.poll_min_interval, delay)
         self.next_poll_time = now + delay
 
-    def _get_best_album_art(self, images):
+    def _get_best_album_art(self, images, min_size=128):
         """
-        Get the best quality album art URL
+        Pick the album art URL to download.
+
+        Spotify usually offers 640px, 300px and 64px versions. The panel is
+        64x64, so the 640px one (~100-200 KB) is wasted bandwidth and decode
+        time on a Pi Zero. Take the smallest image that's still at least
+        min_size (2x the panel) so downscaling stays sharp - normally 300px.
 
         Args:
             images: List of image objects from Spotify API
 
         Returns:
-            str: URL of the highest resolution image
+            str: URL of the chosen image, or None
         """
         if not images:
             return None
-
-        # Spotify returns images sorted by size (largest first)
-        # For a 64x64 display, we can use the smallest available
-        # But we'll use the largest to maintain quality during processing
-        return images[0]['url']
+        sized = [img for img in images if img.get('width') and img.get('url')]
+        big_enough = [img for img in sized if img['width'] >= min_size]
+        if big_enough:
+            return min(big_enough, key=lambda img: img['width'])['url']
+        if sized:
+            return max(sized, key=lambda img: img['width'])['url']
+        # No size info: Spotify lists largest first
+        return images[0].get('url')
 
     def is_playing(self):
         """

@@ -42,8 +42,39 @@ def cache_dir():
 
 
 def mode_sleep(seconds):
-    """Sleep up to `seconds`, returning early if wake_modes() is called."""
-    _wake_event.wait(seconds)
+    """Sleep up to `seconds`, returning early if wake_modes() is called.
+
+    Returns True if woken early (e.g. the mode was switched away).
+    """
+    if seconds <= 0:
+        return _wake_event.is_set()
+    return _wake_event.wait(seconds)
+
+
+def wait_for_frame(state, interval):
+    """Frame pacing for animations.
+
+    Sleeps until the next frame is due (instead of returning immediately and
+    letting the display loop spin), so the loop wakes once per frame rather
+    than ~200 times a second. Keeps a fixed cadence without drift.
+
+    Args:
+        state: dict holding 'next' (the monotonic time the next frame is due)
+        interval: seconds per frame
+
+    Returns:
+        True if the frame should be drawn, False if a mode switch interrupted.
+    """
+    import time
+    now = time.monotonic()
+    due = state.get('next', now)
+    if due > now and mode_sleep(due - now):
+        return False
+    now = time.monotonic()
+    # If we fell more than a frame behind (slow Pi, GC pause), resync rather
+    # than bursting several frames to catch up.
+    state['next'] = due + interval if now - due < interval else now + interval
+    return True
 
 
 def wake_modes():

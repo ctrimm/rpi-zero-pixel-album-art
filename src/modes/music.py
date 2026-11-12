@@ -151,6 +151,10 @@ class MusicMode:
     def _show_message(self, text, color):
         """Show a centred status message"""
         try:
+            # Already on screen? Don't re-render and re-push the same frame.
+            if (getattr(self, '_message_key', None) == (text, color)
+                    and self.display.current_image is getattr(self, '_message_frame', None)):
+                return
             display_size = self.display.get_size()
             placeholder = self.image_processor.create_text_image(
                 text,
@@ -159,6 +163,8 @@ class MusicMode:
             )
             self.display.display_image(placeholder)
             self.last_frame = None
+            self._message_key = (text, color)
+            self._message_frame = self.display.current_image
 
         except Exception as e:
             self.logger.error(f"Error displaying placeholder: {e}")

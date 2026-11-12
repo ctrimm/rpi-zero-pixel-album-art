@@ -44,9 +44,12 @@ async function refreshStatus() {
         updateUI(status);
         updateConnectionStatus(true);
 
-        // Also fetch current track if in music mode
-        if (status.current_mode === 'music') {
-            fetchCurrentTrack();
+        // /api/status already includes the current track, so there's no
+        // need for a second request every refresh
+        if (status.current_track && status.current_track.track_name) {
+            displayTrackInfo(status.current_track);
+        } else {
+            displayNoTrack();
         }
 
     } catch (error) {
@@ -83,26 +86,6 @@ function updateUI(status) {
     document.getElementById('displayStatus').textContent = status.running ? 'Active' : 'Stopped';
 }
 
-// Fetch current Spotify track
-async function fetchCurrentTrack() {
-    try {
-        const response = await fetch(`${API_BASE}/api/spotify/current`);
-        if (!response.ok) throw new Error('Failed to fetch track');
-
-        const track = await response.json();
-
-        if (track && track.track_name) {
-            displayTrackInfo(track);
-        } else {
-            displayNoTrack();
-        }
-
-    } catch (error) {
-        console.error('Error fetching current track:', error);
-        displayNoTrack();
-    }
-}
-
 // Display track information
 function displayTrackInfo(track) {
     document.getElementById('trackName').textContent = track.track_name || '-';
@@ -111,7 +94,16 @@ function displayTrackInfo(track) {
 
     const albumArtDiv = document.getElementById('albumArt');
     if (track.album_art_url) {
-        albumArtDiv.innerHTML = `<img src="${track.album_art_url}" alt="${track.album_name}">`;
+        // Only swap the <img> when the art actually changes (avoids a flicker
+        // and a re-download every 5s refresh). Built via DOM, not innerHTML,
+        // so album names with quotes/HTML can't break the markup.
+        const existing = albumArtDiv.querySelector('img');
+        if (!existing || existing.src !== track.album_art_url) {
+            const img = document.createElement('img');
+            img.src = track.album_art_url;
+            img.alt = track.album_name || '';
+            albumArtDiv.replaceChildren(img);
+        }
     } else {
         albumArtDiv.innerHTML = '<div class="placeholder">No Album Art</div>';
     }

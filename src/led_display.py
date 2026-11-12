@@ -7,6 +7,7 @@ Auto-detects environment and uses simulator on development machines
 import logging
 import os
 import platform
+import threading
 from PIL import Image, ImageDraw, ImageFont
 
 from utils.runtime import service_user
@@ -56,6 +57,9 @@ class LEDDisplay:
         self.matrix = None
         self.offscreen_canvas = None
         self.current_image = None
+        # display_image() is called from the display loop *and* the web server
+        # thread (test pattern, clear); double-buffer swaps must not interleave.
+        self._lock = threading.Lock()
 
         if MATRIX_AVAILABLE:
             self._initialize_matrix()
@@ -152,7 +156,16 @@ class LEDDisplay:
         self.current_image = image
 
         if MATRIX_AVAILABLE and self.matrix:
-            self.matrix.SetImage(image)
+            with self._lock:
+                if self.offscreen_canvas is not None:
+                    # Double buffering: draw into the back buffer, then swap it
+                    # in at the next refresh. Writing straight to the matrix
+                    # (the old behaviour) modifies the frame while the panel is
+                    # scanning it out, which shows up as tearing in animations.
+                    self.offscreen_canvas.SetImage(image)
+                    self.offscreen_canvas = self.matrix.SwapOnVSync(self.offscreen_canvas)
+                else:
+                    self.matrix.SetImage(image)
         else:
             # In simulation mode, optionally save to file for debugging
             self.logger.debug(f"Simulation: Would display {image.size} image")
@@ -223,7 +236,20 @@ class LEDDisplay:
         brightness = max(0, min(100, brightness))
 
         if MATRIX_AVAILABLE and self.matrix:
-            self.matrix.brightness = brightness
+            with self._lock:
+                # Brightness is stored per frame buffer: set the live one via
+                # the matrix and the back buffer explicitly, otherwise the next
+                # swap would bring the old brightness back.
+                self.matrix.brightness = brightness
+                if self.offscreen_canvas is not None:
+                    self.offscreen_canvas.brightness = brightness
+                if self.current_image is not None and self.offscreen_canvas is not None:
+                    # The library applies brightness when pixels are written,
+                    # so re-draw the current frame - otherwise static screens
+                    # (album art) wouldn't change until their next redraw.
+                    self.offscreen_canvas.SetImage(self.current_image)
+                    self.offscreen_canvas = self.matrix.SwapOnVSync(self.offscreen_canvas)
+                    self.offscreen_canvas.brightness = brightness
             self.logger.info(f"Brightness set to {brightness}")
         else:
             self.logger.debug(f"Simulation: Brightness set to {brightness}")

@@ -264,6 +264,7 @@ class SpotifyDisplayApp:
                 # PRIORITY 3: Get current mode handler
                 mode_handler = self.modes.get(self.current_mode)
 
+                started = time.monotonic()
                 if mode_handler:
                     # Update the current mode
                     mode_handler.update()
@@ -271,11 +272,12 @@ class SpotifyDisplayApp:
                     self.logger.warning(f"Unknown mode: {self.current_mode}")
                     time.sleep(5)
 
-                # Floor sleep to avoid a 100% CPU busy-wait: the screensaver
-                # modes deliberately return without sleeping when they skip a
-                # frame, so without this the loop would spin as fast as possible
-                # (pegging a core on a Pi Zero). 5ms still allows >100 FPS.
-                time.sleep(0.005)
+                # Floor sleep so a mode that returns instantly can't turn this
+                # into a 100% CPU busy-wait. Modes normally pace themselves
+                # (mode_sleep / wait_for_frame), so skip it when update()
+                # already slept - that avoids a second wake-up per frame.
+                if time.monotonic() - started < 0.002:
+                    time.sleep(0.005)
 
             except Exception as e:
                 self.logger.error(f"Error in display loop: {e}", exc_info=True)
